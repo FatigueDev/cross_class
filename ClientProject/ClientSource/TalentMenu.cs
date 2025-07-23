@@ -1,0 +1,846 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Threading.Tasks;
+using Barotrauma;
+using Barotrauma.Extensions;
+using HarmonyLib;
+using Microsoft.Xna.Framework;
+using MonoGame.Utilities;
+using static Barotrauma.TalentTree;
+using static Barotrauma.TalentTree.TalentStages;
+
+namespace CrossClass
+{
+    [HarmonyPatch]
+    public class TalentMenu_Patches
+    {
+        // static GUIFrame? parentCached = null;
+        static GUIListBox? mainList = null;
+        static GUIFrame? content = null;
+        static GUILayoutGroup? contentLayout = null;
+        static GUILayoutGroup? subTreeLayoutGroup = null;
+        static GUIListBox? specializationList = null;
+        static GUILayoutGroup? crossClassLayout = null;
+        static GUIListBox? crossClassButtonList = null;
+        static GUILayoutGroup? footerMainLayout = null;
+        static GUIButton? crossClassButton = null;
+        static GUIFrame? background;
+        static GUIFrame? horizontalLine;
+        static int padding;
+        static GUIFrame? frame;
+        public static TalentTree? selectedTalentTree = null;
+        public static TalentTree? primaryTalentTree = null;
+        // public static List<TalentTree> crossClassTalentTrees = [];
+        // static bool shouldClearCrossClassValues = true;
+
+        private static readonly Color unselectedColor = new Color(240, 255, 255, 225),
+                                    unselectableColor = new Color(100, 100, 100, 225),
+                                    pressedColor = new Color(60, 60, 60, 225),
+                                    lockedColor = new Color(48, 48, 48, 255),
+                                    unlockedColor = new Color(24, 37, 31, 255),
+                                    availableColor = new Color(50, 47, 33, 255);
+
+        static Identifier crossClassTotalPointsString = "cross_class_available_points.";
+        static Identifier crossClassSpentPointsString = "cross_class_spent_points.";
+        static Identifier crossClassSelectedJob = "cross_class_selected_job";
+
+        static int GetTotalCrossClassPoints(CharacterInfo characterInfo) =>
+            (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassTotalPointsString}{characterInfo.ID}"));
+
+        static int GetSpentCrossClassPoints(CharacterInfo characterInfo) =>
+            (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassSpentPointsString}{characterInfo.ID}"));
+
+        static int GetAvailableCrossClassPoints(CharacterInfo characterInfo) =>
+            GetTotalCrossClassPoints(characterInfo) - GetSpentCrossClassPoints(characterInfo);
+
+        static void IncrementTotalCrossClassPoints(CharacterInfo characterInfo)
+        {
+            int currentPoints = GetTotalCrossClassPoints(characterInfo);
+            SetTotalCrossClassPoints(characterInfo, currentPoints + 1);
+        }
+
+        static void IncrementSpentCrossClassPoints(CharacterInfo characterInfo)
+        {
+            int currentSpent = GetSpentCrossClassPoints(characterInfo);
+            SetSpentCrossClassPoints(characterInfo, currentSpent + 1);
+        }
+
+        static void SetTotalCrossClassPoints(CharacterInfo characterInfo, int value) =>
+            characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassTotalPointsString}{characterInfo.ID}"), false, setValue: true);
+
+        static void SetSpentCrossClassPoints(CharacterInfo characterInfo, int value) =>
+            characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassSpentPointsString}{characterInfo.ID}"), false, setValue: true);
+
+        static bool CanCrossClass(CharacterInfo characterInfo)
+        {
+            var availablePoints = GetAvailableCrossClassPoints(characterInfo);
+            var totalPoints = GetTotalCrossClassPoints(characterInfo);
+            var spentPoints = GetSpentCrossClassPoints(characterInfo);
+            // LuaCsLogger.LogError($"\nAvailable points: {availablePoints}\nTotal points: {totalPoints}\nSpent points: {spentPoints}\n");
+            return GetAvailableCrossClassPoints(characterInfo) > 0;
+        }
+
+        static void SelectTalentTree(CharacterInfo characterInfo, Identifier selectedTalentTreeJobPrefabIdentifier)
+        {
+            // shouldClearCrossClassValues = false;
+            selectedTalentTree = GetTalentTreeForJobIdentifier(selectedTalentTreeJobPrefabIdentifier, characterInfo.Job.Prefab.Identifier);
+            for(int i = 0; i < JobTalentTrees.Count(); i++)
+            {
+                if(JobTalentTrees.ElementAt(i) == selectedTalentTree)
+                {
+                    characterInfo.ChangeSavedStatValue(StatTypes.None, i, "cross_class_current_selection", true, setValue: true);
+                }
+            }
+        }
+
+        public static TalentTree GetSelectedTalentTree(CharacterInfo characterInfo)
+        {
+            return JobTalentTrees.ElementAt((int)characterInfo.GetSavedStatValue(StatTypes.None, "cross_class_current_selection"));
+        }
+
+        static void LoadSavedCrossClassTalentTrees(CharacterInfo characterInfo)
+        {
+            // crossClassTalentTrees.Clear();
+            foreach(TalentTree t in JobTalentTrees)
+            {
+                if(HasCrossClassTalentTree(characterInfo, t))
+                {
+                    UnlockCrossClassTalentTree(characterInfo, t);
+                }
+            }
+            RefreshCrossClassTalentPoints(characterInfo);
+        }
+
+        static void RefreshCrossClassTalentPoints(CharacterInfo characterInfo)
+        {
+            SetTotalCrossClassPoints(characterInfo, 0);
+            SetSpentCrossClassPoints(characterInfo, 0);
+            var totalTalentPoints = characterInfo.GetTotalTalentPoints();
+
+            // if(totalTalentPoints == 3)
+            // {
+            //     IncrementTotalCrossClassPoints(characterInfo);
+            // }
+            // else if(totalTalentPoints > 3)
+            // {
+            //     int counter = 0;
+            for(int i = 0; i < totalTalentPoints; i++)
+            {
+                if(i < 3) continue;
+                if(i >= 3 && i % 3 == 0)
+                {
+                    IncrementTotalCrossClassPoints(characterInfo);
+                }
+            }
+            // }
+
+            JobTalentTrees.ForEach((tt) => {
+                if(HasCrossClassTalentTree(characterInfo, tt))
+                {
+                    IncrementSpentCrossClassPoints(characterInfo);
+                }
+            });
+
+            // for(int i = 0; i < crossClassTalentTrees.Count(); i++)
+            // {
+            // }
+        }
+
+        // static void UpdateCrossClassTotalTalentPoints(CharacterInfo characterInfo)
+        // {
+           
+        // }
+
+        public static bool HasCrossClassTalentTree(CharacterInfo characterInfo, TalentTree talentTree)
+        {
+            // LuaCsLogger.LogMessage($"{characterInfo.DisplayName} has the cross_class tree of {talentTree.Identifier}");
+            return characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"cross_class.{characterInfo.ID}.{talentTree.Identifier}")) != 0f;
+        }
+
+        static void UnlockCrossClassTalentTree(CharacterInfo characterInfo, TalentTree talentTree)
+        {
+            if(!HasCrossClassTalentTree(characterInfo, talentTree))
+            {
+                // LuaCsLogger.LogMessage($"{characterInfo.DisplayName} is unlocking the cross_class of {talentTree.Identifier}");
+                // crossClassTalentTrees.Add(talentTree);
+                characterInfo.ChangeSavedStatValue(StatTypes.None, 1f, new Identifier($"cross_class.{characterInfo.ID}.{talentTree.Identifier}"), false, setValue: true);
+                RefreshCrossClassTalentPoints(characterInfo);
+            }
+        }
+
+        
+
+        // static TalentTree GetTalentTreeForJobPrefab(JobPrefab jobPrefab)
+        // {
+        //     TalentTree tree = TalentTree.JobTalentTrees.Where(t => t.Identifier)
+        //     return JobTalentTrees.Where((tt) => {
+        //         return tt.Identifier == jobPrefab.Identifier;
+        //     }).Select((jp)=> {
+        //         return jp;
+        //     }).Single();
+        // }
+
+        static TalentTree GetTalentTreeForJobIdentifier(Identifier jobPrefabIdentifier, Identifier defaultJobPrefabIdentifier)
+        {
+            if (TalentTree.JobTalentTrees.TryGet(jobPrefabIdentifier, out TalentTree? selectedTree))
+            {
+                return selectedTree;
+            }
+            else
+            {
+                return GetDefaultTalentTree(defaultJobPrefabIdentifier);
+            }
+        }
+
+        static TalentTree GetDefaultTalentTree(Identifier jobPrefabIdentifier)
+        {
+            // var jobPrefab = characterInfo.Job.Prefab;
+            if (TalentTree.JobTalentTrees.TryGet(jobPrefabIdentifier, out TalentTree? defaultTree))
+            {
+                return defaultTree;
+            }
+            else
+            {
+                throw new NullReferenceException($"TalentTree.JobTalentTrees does not contain a TalentTree for {jobPrefabIdentifier}");
+            }
+        }
+
+        static void ClearGUI(GUIFrame parent, CharacterInfo? characterInfo, TalentMenu talentMenu)
+        {
+            talentMenu.characterInfo = characterInfo;
+            talentMenu.character = characterInfo?.Character;
+
+            parent.ClearChildren();
+            talentMenu.talentButtons.Clear();
+            talentMenu.talentShowCaseButtons.Clear();
+            talentMenu.talentCornerIcons.Clear();
+            talentMenu.showCaseTalentFrames.Clear();
+            primaryTalentTree = null;
+            // crossClassTalentTrees.Clear();
+
+            // if(shouldClearCrossClassValues == true)
+            // {
+            //     primaryTalentTree = null;
+            //     selectedTalentTree = null;
+            //     crossClassTalentTrees = Enumerable.Empty<TalentTree>();
+            // }
+        }
+
+        static void ResetGUI(GUIFrame parent)
+        {
+            background = new GUIFrame(new RectTransform(Vector2.One, parent.RectTransform, Anchor.TopCenter), style: "GUIFrameListBox");
+            padding = GUI.IntScale(15);
+            frame = new GUIFrame(new RectTransform(new Point(background.Rect.Width - padding, background.Rect.Height - padding), parent.RectTransform, Anchor.Center), style: null);
+
+            content = new GUIFrame(new RectTransform(new Vector2(0.98f), frame.RectTransform, Anchor.Center), style: null);
+            contentLayout = new GUILayoutGroup(new RectTransform(Vector2.One, content.RectTransform, anchor: Anchor.Center), childAnchor: Anchor.TopCenter)
+            {
+                AbsoluteSpacing = GUI.IntScale(10),
+                Stretch = true
+            };
+        }
+
+        static void CreateTalentSelectionBar(GUILayoutGroup parent, CharacterInfo characterInfo, GUIFrame talentMenuParentFrame, TalentMenu talentMenu)
+        {
+            // RefreshCrossClassTalentPoints(characterInfo);
+            var availableCrossClassPoints = GetAvailableCrossClassPoints(characterInfo);
+            var crossClassButtonSuffix = availableCrossClassPoints > 0 ? $" ({availableCrossClassPoints})" : "";
+            // LuaCsLogger.LogError($"Stepped in again; available points is: {availableCrossClassPoints}");
+
+            crossClassLayout = new GUILayoutGroup(new RectTransform(new Vector2(1f, 0.1f), parent.RectTransform), true, Anchor.CenterLeft);
+            crossClassButton = new GUIButton(new RectTransform(new Vector2(0.2f, 0.9f), crossClassLayout.rectTransform))
+            {
+                OnButtonDown = () =>
+                {
+                    // LuaCsLogger.LogMessage("Pressed Cross Class");
+                    // f.Visible = !f.Visible;
+                    if(selectedTalentTree != primaryTalentTree && CanCrossClass(characterInfo))
+                    {
+                        // LuaCsLogger.LogMessage($"Adding {selectedTalentTree!.Identifier} as a cross class tree.");
+                        UnlockCrossClassTalentTree(characterInfo, selectedTalentTree);
+                        RefreshCrossClassTalentPoints(characterInfo);
+                        
+                        // shouldClearCrossClassValues = false;
+
+                        // ClearGUI(parentCached!, characterInfo, talentMenu);
+                        // ResetGUI(parentCached!);
+                        talentMenu.CreateGUI(talentMenuParentFrame, characterInfo);
+                        return true;
+                    }
+                    return true;
+                },
+                Text = $"Cross Class{crossClassButtonSuffix}",
+                Color = CanCrossClass(characterInfo) ? Color.Goldenrod : Color.Gray,
+                Enabled = CanCrossClass(characterInfo),
+                TextColor = Color.White,
+                HoverColor = Color.LightGoldenrodYellow,
+                SelectedColor = Color.Goldenrod,
+                DisabledColor = Color.DarkGoldenrod,
+                PressedColor = Color.PaleGoldenrod,
+                ToolTip = "Upon clicking this button when you are able to cross class, the currently selected tree will be added to your cross class list."
+            };
+
+            crossClassButtonList = new GUIListBox(new RectTransform(new Vector2(0.8f, 0.9f), crossClassLayout.RectTransform), true);
+
+            // IEnumerable<JobPrefab> jobPrefabList = Enumerable.Empty<JobPrefab>();
+            // jobPrefabList = JobPrefab.Prefabs.Where((job) => job.Identifier).Prepend(primaryTalentTree!);
+
+            // JobTalentTrees.ForEach((t)=>{
+                
+            // });
+
+            IEnumerable<JobPrefab> jobPrefabs = JobPrefab.Prefabs.Where(
+                jp => (jp.Identifier != characterInfo.Job.Prefab.Identifier) && !jp.HiddenJob
+            );
+
+            jobPrefabs = jobPrefabs.Prepend(characterInfo.Job.Prefab);
+
+            jobPrefabs.ForEach(jobPrefab =>
+            {
+                GUIButton iconButton;
+
+                // if (jobPrefab.Identifier == characterInfo.Job.Prefab.Identifier)
+                // {
+                //     iconButton = new GUIButton(new RectTransform(new Vector2(0.065f, 0.9f), crossClassButtonList.Content.RectTransform, Anchor.CenterLeft))
+                //     {
+                //         GlowOnSelect = true,
+                //         OutlineColor = Color.Pink,
+                //         Color = Color.Green,
+                //         DisabledColor = Color.Gray,
+                //         HoverColor = Color.WhiteSmoke
+                //     };
+                // }
+                // else
+                // {
+                // var isCrossClassSkill = characterInfo.GetSavedStatValue(StatTypes.None, $"cross_class.{characterInfo.Job.Prefab.Identifier}");
+
+                bool isPrimary = characterInfo.Job.Prefab.Identifier == jobPrefab.Identifier;
+                bool isSelectedTree = selectedTalentTree!.Identifier == jobPrefab.Identifier;
+                bool hasCrossClassTree =
+                    HasCrossClassTalentTree(
+                        characterInfo,
+                        GetTalentTreeForJobIdentifier(jobPrefab.Identifier, characterInfo.Job.Prefab.Identifier)
+                    );
+
+                // LuaCsLogger.LogError($"State of hasCrossClassTree: #{hasCrossClassTree}");
+
+                Color selectedColor = Color.LightGoldenrodYellow;
+                Color selectedLockedColor = Color.LightGray;
+                Color unlockedColor = Color.White;
+                Color lockedColor = Color.DimGray;
+
+                Color buttonColor = Color.Magenta;
+
+                if(isPrimary && isSelectedTree)
+                {
+                    buttonColor = selectedColor;
+                }
+                else if(isPrimary && !isSelectedTree)
+                {
+                    buttonColor = unlockedColor;
+                }
+                else if(!isPrimary && hasCrossClassTree && isSelectedTree)
+                {
+                    buttonColor = selectedColor;
+                }
+                else if(!isPrimary && hasCrossClassTree && !isSelectedTree)
+                {
+                    buttonColor = unlockedColor;
+                }
+                else if(!isPrimary && !hasCrossClassTree && isSelectedTree)
+                {
+                    buttonColor = selectedLockedColor;
+                }
+                else if(!isPrimary && !hasCrossClassTree && !isSelectedTree)
+                {
+                    buttonColor = lockedColor;
+                }
+
+                iconButton = new GUIButton(new RectTransform(new Vector2(0.065f, 0.9f), crossClassButtonList.Content.RectTransform, Anchor.CenterLeft))
+                {
+                    // GlowOnSelect = true,
+                    Color = buttonColor,
+                    // DisabledColor = Color.Gray,
+                    // HoverColor = Color.WhiteSmoke,
+                    ToolTip = $"{jobPrefab.Name}"
+                };
+                
+                // }
+                //RichString.Rich($"‖color:{Color.White.ToStringHex()}‖{jobPrefab.Name.cachedValue}‖color:end‖");
+
+                var iconComponent = new GUIImage(
+                    new RectTransform(new Vector2(1f, 1f), iconButton.RectTransform, Anchor.CenterLeft), jobPrefab.Icon, true)
+                {
+                    // Enabled = false,
+                    Color = hasCrossClassTree ? jobPrefab.UIColor : buttonColor,
+                    // DisabledColor = Color.Gray,
+                    // HoverColor = Color.WhiteSmoke,
+                    // ToolTip = TextManager.Get(jobPrefab.Identifier)
+                    // SelectedColor = Color.White,
+                };
+
+                iconButton.OnButtonDown += (GUIButton.OnButtonDownHandler)(() =>
+                {
+                    SelectTalentTree(characterInfo, jobPrefab.Identifier);
+                    // CreateGUIForSelectedTalentTree(talentMenuParentFrame, characterInfo, talentMenu);
+
+                    // LuaCsLogger.LogMessage($"Selected: {jobPrefab.Identifier}");
+                    
+                    // if (TalentTree.JobTalentTrees.TryGet(jobPrefab.Identifier, out TalentTree? selectedJob))
+                    // {
+                    // talentMenu.CreateTalentMenu(contentLayout!, characterInfo, selectedJob!);
+                    // talentMenu.CreateFooter(contentLayout!, characterInfo);
+                    // talentMenu.UpdateTalentInfo();
+                    // }
+
+                    CreateGUI(talentMenuParentFrame, characterInfo, talentMenu);
+                    return true;
+                });
+
+                // iconComponent.OnDraw += (Microsoft.Xna.Framework.Graphics.SpriteBatch spriteBatch, GUICustomComponent c) => {
+                // sprite.Draw(spriteBatch, crossClassLayout.Rect.Center.ToVector2(), Color.Orange, scale: Math.Min(crossClassLayout.Rect.Width / (float)sprite.SourceRect.Width, crossClassLayout.Rect.Height / (float)sprite.SourceRect.Height));
+                // };
+            });
+
+            // crossClassButtonList.RectTransform.MinSize = new Point(crossClassButtonList.Rect.Width + (int)(crossClassButtonList.ScrollBar.Rect.Width * 0.9f), crossClassButtonList.Content.Rect.Height);
+        }
+
+        // static void CreateGUIForSelectedTalentTree(GUIFrame parent, CharacterInfo? characterInfo, TalentMenu __instance)
+        // {
+        //     LuaCsLogger.Log("Talent Menu create GUI fully overridden");
+
+        //     ClearGUI(parent, characterInfo, __instance);
+        //     ResetGUI(parent);
+
+        //     if (characterInfo is null) { return; }
+
+        //     __instance.CreateStatPanel(contentLayout!, characterInfo);
+        //     horizontalLine = new GUIFrame(new RectTransform(new Vector2(1f, 1f), contentLayout!.RectTransform), style: "HorizontalLine");
+
+        //     // if (TalentTree.JobTalentTrees.TryGet(characterInfo.Job.Prefab.Identifier, out TalentTree? talentTree))
+        //     // {
+        //     // selectedTalentTree ??= GetDefaultTalentTree(characterInfo.Job.Prefab.Identifier);
+
+        //     CreateTalentSelectionBar(contentLayout, characterInfo, parent, __instance);
+        //     __instance.CreateTalentMenu(contentLayout, characterInfo, selectedTalentTree!);
+
+        //     // }
+
+        //     __instance.CreateFooter(contentLayout, characterInfo);
+        //     __instance.UpdateTalentInfo();
+
+        //     if (GameMain.NetworkMember != null && TalentMenu.IsOwnCharacter(characterInfo))
+        //     {
+        //         __instance.CreateMultiplayerCharacterSettings(frame!, content!);
+        //     }
+        // }
+
+        [HarmonyPrefix]
+        [HarmonyPatch("Barotrauma.TalentMenu", "CreateGUI")]
+        static bool CreateGUI(GUIFrame parent, CharacterInfo? characterInfo, TalentMenu __instance)
+        {
+            // LuaCsLogger.Log("Talent Menu create GUI fully overridden.\nSetting character info stat for debug");
+
+            // parentCached = parent;
+
+            ClearGUI(parent, characterInfo, __instance);
+            ResetGUI(parent);
+
+            if (characterInfo is null) { return false; }
+
+            RefreshCrossClassTalentPoints(characterInfo);
+            
+            // if(!TalentMenu.IsOwnCharacter(characterInfo))
+            // {
+            //     shouldClearCrossClassValues = true;
+            // }
+
+            primaryTalentTree = GetDefaultTalentTree(characterInfo.Job.Prefab.Identifier);
+
+            if(selectedTalentTree == null)
+            {
+                selectedTalentTree = primaryTalentTree;
+            }
+            else
+            {
+                primaryTalentTree = GetDefaultTalentTree(characterInfo.Job.Prefab.Identifier);
+                selectedTalentTree ??= primaryTalentTree;
+            }
+            LoadSavedCrossClassTalentTrees(characterInfo);
+
+            
+            // characterInfo.ChangeSavedStatValue(StatTypes.None, 1.0f, $"cross_class.captain", false, 1.0f, true);
+
+            // LuaCsLogger.LogMessage($"Saved stat value = {characterInfo.GetSavedStatValue(StatTypes.None, "cross_class.captain")}");
+
+            __instance.CreateStatPanel(contentLayout!, characterInfo);
+            horizontalLine = new GUIFrame(new RectTransform(new Vector2(1f, 1f), contentLayout!.RectTransform), style: "HorizontalLine");
+
+            // if (TalentTree.JobTalentTrees.TryGet(characterInfo.Job.Prefab.Identifier, out TalentTree? talentTree))
+            // {
+            //     // selectedTalentTree ??= GetDefaultTalentTree(characterInfo.Job.Prefab.Identifier);
+
+            CreateTalentSelectionBar(contentLayout, characterInfo, parent, __instance);
+            __instance.CreateTalentMenu(contentLayout, characterInfo, selectedTalentTree!);
+
+            // }
+
+            __instance.CreateFooter(contentLayout, characterInfo);
+            __instance.UpdateTalentInfo();
+
+            if (GameMain.NetworkMember != null && TalentMenu.IsOwnCharacter(characterInfo))
+            {
+                __instance.CreateMultiplayerCharacterSettings(frame!, content!);
+            }
+
+            return false;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch("Barotrauma.TalentMenu", "CreateTalentMenu")]
+        static bool CreateTalentMenu(GUIComponent parent, CharacterInfo info, TalentTree tree, TalentMenu __instance)
+        {
+            __instance.talentMainArea = new GUIFrame(new RectTransform(new Vector2(1f, 0.9f), parent.RectTransform, Anchor.TopCenter), style: null);
+
+            mainList = new GUIListBox(new RectTransform(Vector2.One, __instance.talentMainArea.RectTransform));
+            __instance.startAnimation = TalentMenu.CreatePopupAnimationHandler(__instance.talentMainArea);
+
+            if (info is { TalentRefundPoints: > 0, ShowTalentResetPopupOnOpen: true })
+            {
+                __instance.CreateTalentResetPopup(__instance.talentMainArea);
+            }
+
+            __instance.selectedTalents = info.GetUnlockedTalentsInTree().ToHashSet();
+
+            var specializationCount = tree.TalentSubTrees.Count(t => t.Type == TalentTreeType.Specialization);
+
+            List<GUITextBlock> subTreeNames = new List<GUITextBlock>();
+            foreach (var subTree in tree.TalentSubTrees)
+            {
+                GUIListBox talentList;
+                GUIComponent talentParent;
+                Vector2 treeSize;
+                switch (subTree.Type)
+                {
+                    case TalentTreeType.Primary:
+                        talentList = mainList;
+                        treeSize = new Vector2(1f, 0.5f);
+                        break;
+                    case TalentTreeType.Specialization:
+                        talentList = GetSpecializationList();
+                        treeSize = new Vector2(Math.Max(0.333f, 1.0f / tree.TalentSubTrees.Count(t => t.Type == TalentTreeType.Specialization)), 1f);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException($"Invalid TalentTreeType \"{subTree.Type}\"");
+                }
+                talentParent = talentList.Content;
+
+                subTreeLayoutGroup = new GUILayoutGroup(new RectTransform(treeSize, talentParent.RectTransform), isHorizontal: false, childAnchor: Anchor.TopCenter)
+                {
+                    Stretch = true
+                };
+
+                if (subTree.Type != TalentTreeType.Primary)
+                {
+                    GUIFrame subtreeTitleFrame = new GUIFrame(new RectTransform(new Vector2(1f, 0.05f), subTreeLayoutGroup.RectTransform, anchor: Anchor.TopCenter)
+                    { MinSize = new Point(0, GUI.IntScale(30)) }, style: null);
+                    subtreeTitleFrame.RectTransform.IsFixedSize = true;
+                    int elementPadding = GUI.IntScale(8);
+                    Point headerSize = subtreeTitleFrame.RectTransform.NonScaledSize;
+                    GUIFrame subTreeTitleBackground = new GUIFrame(new RectTransform(new Point(headerSize.X - elementPadding, headerSize.Y), subtreeTitleFrame.RectTransform, anchor: Anchor.Center), style: "SubtreeHeader");
+                    subTreeNames.Add(new GUITextBlock(new RectTransform(Vector2.One, subTreeTitleBackground.RectTransform, anchor: Anchor.TopCenter), subTree.DisplayName, font: GUIStyle.SubHeadingFont, textAlignment: Alignment.Center));
+                }
+
+                int optionAmount = subTree.TalentOptionStages.Length;
+                for (int i = 0; i < optionAmount; i++)
+                {
+                    TalentOption option = subTree.TalentOptionStages[i];
+                    __instance.CreateTalentOption(subTreeLayoutGroup, subTree, i, option, info, specializationCount);
+                }
+                subTreeLayoutGroup.RectTransform.Resize(new Point(subTreeLayoutGroup.Rect.Width,
+                    subTreeLayoutGroup.Children.Sum(c => c.Rect.Height + subTreeLayoutGroup.AbsoluteSpacing)));
+                subTreeLayoutGroup.RectTransform.MinSize = new Point(subTreeLayoutGroup.Rect.Width, subTreeLayoutGroup.Rect.Height);
+                subTreeLayoutGroup.Recalculate();
+
+                if (subTree.Type == TalentTreeType.Specialization)
+                {
+                    talentList.RectTransform.Resize(new Point(talentList.Rect.Width, Math.Max(subTreeLayoutGroup.Rect.Height, talentList.Rect.Height)));
+                    talentList.RectTransform.MinSize = new Point(0, talentList.Rect.Height);
+                }
+            }
+
+            specializationList = GetSpecializationList();
+            //resize (scale up) children if there's less than 3 of them to make them cover the whole width of the menu
+            specializationList.Content.RectTransform.Resize(new Point(specializationList.Content.Children.Sum(static c => c.Rect.Width), specializationList.Rect.Height),
+                resizeChildren: specializationCount < 3);
+            //make room for scrollbar if there's more than the default amount of specializations
+            if (specializationCount > 3)
+            {
+                specializationList.RectTransform.MinSize = new Point(specializationList.Rect.Width, specializationList.Content.Rect.Height + (int)(specializationList.ScrollBar.Rect.Height * 0.9f));
+            }
+
+            GUITextBlock.AutoScaleAndNormalize(subTreeNames);
+
+            GUIListBox GetSpecializationList()
+            {
+                if (mainList!.Content.Children.LastOrDefault() is GUIListBox specList)
+                {
+                    return specList;
+                }
+                GUIListBox newSpecializationList = new GUIListBox(new RectTransform(new Vector2(1.0f, 0.5f), mainList.Content.RectTransform, Anchor.TopCenter), isHorizontal: true, style: null);
+                return newSpecializationList;
+            }
+
+            return false;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch("Barotrauma.TalentMenu", "CreateFooter")]
+        static bool CreateFooter(GUIComponent parent, CharacterInfo info, TalentMenu __instance)
+        {
+            if (footerMainLayout != null)
+            {
+                footerMainLayout.ClearChildren();
+                parent.RemoveChild(footerMainLayout);
+            }
+
+            footerMainLayout = new GUILayoutGroup(new RectTransform(new Vector2(1f, 0.07f), parent.RectTransform, Anchor.TopCenter), isHorizontal: true)
+            {
+                RelativeSpacing = 0.01f,
+                Stretch = true
+            };
+            GUILayoutGroup gUILayoutGroup2 = new GUILayoutGroup(new RectTransform(new Vector2(0.59f, 1f), footerMainLayout.RectTransform));
+            GUIFrame gUIFrame = new GUIFrame(new RectTransform(new Vector2(1f, 0.5f), gUILayoutGroup2.RectTransform), null);
+            __instance.experienceBar = new GUIProgressBar(new RectTransform(new Vector2(1f, 1f), gUIFrame.RectTransform, Anchor.CenterLeft), info.GetProgressTowardsNextLevel(), GUIStyle.Green)
+            {
+                IsHorizontal = true
+            };
+            RectTransform rectT = new RectTransform(new Vector2(1f, 1f), gUIFrame.RectTransform, Anchor.Center);
+            RichString text = "";
+            GUIFont font = GUIStyle.Font;
+            __instance.experienceText = new GUITextBlock(rectT, text, null, font, Alignment.CenterRight)
+            {
+                Shadow = true,
+                ToolTip = TextManager.Get("experiencetooltip")
+            };
+            RectTransform rectT2 = new RectTransform(new Vector2(1f, 0.5f), gUILayoutGroup2.RectTransform, Anchor.Center);
+            RichString text2 = "";
+            font = GUIStyle.SubHeadingFont;
+            __instance.talentPointText = new GUITextBlock(rectT2, text2, null, font, Alignment.CenterRight)
+            {
+                AutoScaleVertical = true
+            };
+            __instance.talentResetButton = new GUIButton(new RectTransform(new Vector2(0.19f, 1f), footerMainLayout.RectTransform), TextManager.Get("reset"), Alignment.Center, "GUIButtonFreeScale")
+            {
+                OnClicked = __instance.ResetTalentSelection
+            };
+            __instance.talentApplyButton = new GUIButton(new RectTransform(new Vector2(0.19f, 1f), footerMainLayout.RectTransform), TextManager.Get("applysettingsbutton"), Alignment.Center, "GUIButtonFreeScale")
+            {
+                OnClicked = __instance.ApplyTalentSelection
+			};
+            GUITextBlock.AutoScaleAndNormalize(__instance.talentResetButton.TextBlock, __instance.talentApplyButton.TextBlock);
+            return false;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch("Barotrauma.TalentMenu", "CreateTalentOption")]
+        static bool CreateTalentOption(GUIComponent parent, TalentSubTree subTree, int index, TalentOption talentOption, CharacterInfo info, int specializationCount, TalentMenu __instance, ref ImmutableDictionary<TalentStages, TalentTreeStyle> ___talentStageStyles)
+        {
+            int elementPadding = GUI.IntScale(8);
+            int height = GUI.IntScale((GameMain.GameSession?.Campaign == null ? 65 : 60) * (specializationCount > 3 ? 0.97f : 1.0f));
+            GUIFrame talentOptionFrame = new GUIFrame(new RectTransform(new Vector2(1f, 0.01f), parent.RectTransform, anchor: Anchor.TopCenter)
+            { MinSize = new Point(0, height) }, style: null);
+
+            Point talentFrameSize = talentOptionFrame.RectTransform.NonScaledSize;
+
+            GUIFrame talentBackground = new GUIFrame(new RectTransform(new Point(talentFrameSize.X - elementPadding, talentFrameSize.Y - elementPadding), talentOptionFrame.RectTransform, anchor: Anchor.Center),
+                style: "TalentBackground")
+            {
+                Color = ___talentStageStyles[Locked].Color
+            };
+            GUIFrame talentBackgroundHighlight = new GUIFrame(new RectTransform(Vector2.One, talentBackground.RectTransform, anchor: Anchor.Center), style: "TalentBackgroundGlow") { Visible = false };
+
+            GUIImage cornerIcon = new GUIImage(new RectTransform(new Vector2(0.2f), talentOptionFrame.RectTransform, anchor: Anchor.BottomRight, scaleBasis: ScaleBasis.BothHeight) { MaxSize = new Point(16) }, style: null)
+            {
+                CanBeFocused = false,
+                Color = ___talentStageStyles[Locked].Color
+            };
+
+            Point iconSize = cornerIcon.RectTransform.NonScaledSize;
+            cornerIcon.RectTransform.AbsoluteOffset = new Point(iconSize.X / 2, iconSize.Y / 2);
+
+            GUILayoutGroup talentOptionCenterGroup = new GUILayoutGroup(new RectTransform(new Vector2(0.6f, 0.9f), talentOptionFrame.RectTransform, Anchor.Center), childAnchor: Anchor.CenterLeft);
+            GUILayoutGroup talentOptionLayoutGroup = new GUILayoutGroup(new RectTransform(Vector2.One, talentOptionCenterGroup.RectTransform), isHorizontal: true, childAnchor: Anchor.CenterLeft) { Stretch = true };
+
+            HashSet<Identifier> talentOptionIdentifiers = talentOption.TalentIdentifiers.OrderBy(static t => t).ToHashSet();
+            HashSet<TalentButton> buttonsToAdd = new();
+
+            Dictionary<GUILayoutGroup, ImmutableHashSet<Identifier>> showCaseTalentParents = new();
+            Dictionary<Identifier, GUIComponent> showCaseTalentButtonsToAdd = new();
+
+            foreach (var (showCaseTalentIdentifier, talents) in talentOption.ShowCaseTalents)
+            {
+                talentOptionIdentifiers.Add(showCaseTalentIdentifier);
+                Point parentSize = talentBackground.RectTransform.NonScaledSize;
+                GUIFrame showCaseFrame = new GUIFrame(new RectTransform(new Point((int)(parentSize.X / 3f * (talents.Count - 1)), parentSize.Y)), style: "GUITooltip")
+                {
+                    UserData = showCaseTalentIdentifier,
+                    IgnoreLayoutGroups = true,
+                    Visible = false
+                };
+                GUILayoutGroup showcaseCenterGroup = new GUILayoutGroup(new RectTransform(new Vector2(0.9f, 0.7f), showCaseFrame.RectTransform, Anchor.Center), childAnchor: Anchor.CenterLeft);
+                GUILayoutGroup showcaseLayout = new GUILayoutGroup(new RectTransform(Vector2.One, showcaseCenterGroup.RectTransform), isHorizontal: true) { Stretch = true };
+                showCaseTalentParents.Add(showcaseLayout, talents);
+                __instance.showCaseTalentFrames.Add(showCaseFrame);
+            }
+
+            foreach (Identifier talentId in talentOptionIdentifiers)
+            {
+                if (!TalentPrefab.TalentPrefabs.TryGet(talentId, out TalentPrefab? talent)) { continue; }
+
+                bool isShowCaseTalent = talentOption.ShowCaseTalents.ContainsKey(talentId);
+                GUIComponent talentParent = talentOptionLayoutGroup;
+
+                foreach (var (key, value) in showCaseTalentParents)
+                {
+                    if (value.Contains(talentId))
+                    {
+                        talentParent = key;
+                        break;
+                    }
+                }
+
+                GUIFrame talentFrame = new GUIFrame(new RectTransform(Vector2.One, talentParent.RectTransform), style: null)
+                {
+                    CanBeFocused = false
+                };
+
+                GUIFrame croppedTalentFrame = new GUIFrame(new RectTransform(Vector2.One, talentFrame.RectTransform, anchor: Anchor.Center, scaleBasis: ScaleBasis.BothHeight), style: null);
+                GUIButton talentButton = new GUIButton(new RectTransform(Vector2.One, croppedTalentFrame.RectTransform, anchor: Anchor.Center), style: null)
+                {
+                    ToolTip = TalentMenu.GetTalentTooltip(talent, __instance.characterInfo),
+                    UserData = talent.Identifier,
+                    PressedColor = pressedColor,
+                    Enabled = info.Character != null,
+                    OnClicked = (button, userData) =>
+                    {
+                        if (isShowCaseTalent)
+                        {
+                            foreach (GUIComponent component in __instance.showCaseTalentFrames)
+                            {
+                                if (component.UserData is Identifier showcaseIdentifier && showcaseIdentifier == talentId)
+                                {
+                                    component.RectTransform.ScreenSpaceOffset = new Point((int)(button.Rect.Location.X - component.Rect.Width / 2f + button.Rect.Width / 2f), button.Rect.Location.Y - component.Rect.Height);
+                                    component.Visible = true;
+                                }
+                                else
+                                {
+                                    component.Visible = false;
+                                }
+                            }
+
+                            return true;
+                        }
+
+                        if (__instance.character is null) { return false; }
+
+                        Identifier talentIdentifier = (Identifier)userData;
+                        if (talentOption.MaxChosenTalents is 1)
+                        {
+                            // deselect other buttons in tier by removing their selected talents from pool
+                            foreach (Identifier identifier in __instance.selectedTalents)
+                            {
+                                if (__instance.character.HasTalent(identifier) || identifier == talentId) { continue; }
+
+                                if (talentOptionIdentifiers.Contains(identifier))
+                                {
+                                    __instance.selectedTalents.Remove(identifier);
+                                }
+                            }
+                        }
+
+                        if (__instance.character.HasTalent(talentIdentifier))
+                        {
+                            return true;
+                        }
+                        else if (IsViableTalentForCharacter(info.Character, talentIdentifier, __instance.selectedTalents))
+                        {
+                            if (!__instance.selectedTalents.Contains(talentIdentifier))
+                            {
+                                __instance.selectedTalents.Add(talentIdentifier);
+                            }
+                            else
+                            {
+                                __instance.selectedTalents.Remove(talentIdentifier);
+                            }
+                        }
+                        else
+                        {
+                            __instance.selectedTalents.Remove(talentIdentifier);
+                        }
+
+                        __instance.UpdateTalentInfo();
+                        return true;
+                    },
+                };
+
+                talentButton.Color = talentButton.HoverColor = talentButton.PressedColor = talentButton.SelectedColor = talentButton.DisabledColor = Color.Transparent;
+
+                GUIComponent iconImage;
+                if (talent.Icon is null)
+                {
+                    iconImage = new GUITextBlock(new RectTransform(Vector2.One, talentButton.RectTransform, anchor: Anchor.Center), text: "???", font: GUIStyle.LargeFont, textAlignment: Alignment.Center, style: null)
+                    {
+                        OutlineColor = GUIStyle.Red,
+                        TextColor = GUIStyle.Red,
+                        PressedColor = unselectableColor,
+                        DisabledColor = unselectableColor,
+                        CanBeFocused = false,
+                    };
+                }
+                else
+                {
+                    iconImage = new GUIImage(new RectTransform(Vector2.One, talentButton.RectTransform, anchor: Anchor.Center), sprite: talent.Icon, scaleToFit: true)
+                    {
+                        Color = talent.ColorOverride.TryUnwrap(out Color color) ? color : Color.White,
+                        PressedColor = unselectableColor,
+                        DisabledColor = unselectableColor * 0.5f,
+                        CanBeFocused = false,
+                    };
+                }
+
+                iconImage.Enabled = talentButton.Enabled;
+                if (isShowCaseTalent)
+                {
+                    showCaseTalentButtonsToAdd.Add(talentId, iconImage);
+                    continue;
+                }
+
+                buttonsToAdd.Add(new TalentButton(iconImage, talent));
+            }
+
+            foreach (TalentButton button in buttonsToAdd)
+            {
+                __instance.talentButtons.Add(button);
+            }
+
+            foreach (var (key, value) in showCaseTalentButtonsToAdd)
+            {
+                HashSet<TalentButton> buttons = new();
+                foreach (Identifier identifier in talentOption.ShowCaseTalents[key])
+                {
+                    if (__instance.talentButtons.FirstOrNull(talentButton => talentButton.Identifier == identifier) is not { } button) { continue; }
+
+                    buttons.Add(button);
+                }
+
+                __instance.talentShowCaseButtons.Add(new TalentShowCaseButton(buttons.ToImmutableHashSet(), value));
+            }
+
+            __instance.talentCornerIcons.Add(new TalentCornerIcon(subTree.Identifier, index, cornerIcon, talentBackground, talentBackgroundHighlight));
+            return false;
+        }
+    }
+}
