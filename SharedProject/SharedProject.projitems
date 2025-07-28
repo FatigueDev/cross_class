@@ -10,6 +10,13 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- <Compile Include="$(MSBuildThisFileDirectory)SharedSource\CompilerServices.cs" /> -->
+    <Compile Include="$(MSBuildThisFileDirectory)SharedSource\Utils.cs" />
+    <!-- <Compile Include="$(MSBuildThisFileDirectory)SharedSource\CrewManager.cs" /> -->
+    <Compile Include="$(MSBuildThisFileDirectory)SharedSource\Data\CharacterConfig_Packet.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SharedSource\Data\CharacterConfig.cs" />
+    <!-- <Compile Include="$(MSBuildThisFileDirectory)SharedSource\Data\CampaignConfig.cs" /> -->
+    <!-- <Compile Include="$(MSBuildThisFileDirectory)SharedSource\Data\CampaignConfig_Packet.cs" /> -->
+    <Compile Include="$(MSBuildThisFileDirectory)SharedSource\CrossClassSync.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SharedSource\Plugin.cs" />
   </ItemGroup>
 </Project>

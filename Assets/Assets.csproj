@@ -23,10 +23,12 @@
         <ItemGroup>
             <FileList Include="$(ProjectDir)filelist.xml" />
             <RunConfig Include="$(ProjectDir)RunConfig.xml" />
+            <Icon Include="$(ProjectDir)cross_class_icon.png" />
             <Content Include="$(ProjectDir)Content\**\*.*" />
         </ItemGroup>
         <Copy SourceFiles="@(FileList)" DestinationFiles="$(ModDeployDir)filelist.xml" />
         <Copy SourceFiles="@(RunConfig)" DestinationFiles="$(ModDeployDir)CSharp\RunConfig.xml" />
+        <Copy SourceFiles="@(Icon)" DestinationFiles="$(ModDeployDir)\cross_class_icon.png" />
         <Copy SourceFiles="@(Content)" DestinationFolder="$(ModDeployDir)Content\%(RecursiveDir)" />
     </Target>
 

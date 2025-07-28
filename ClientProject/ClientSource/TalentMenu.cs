@@ -47,10 +47,10 @@ namespace CrossClass
         static Identifier crossClassSelectedJob = "cross_class_selected_job";
 
         static int GetTotalCrossClassPoints(CharacterInfo characterInfo) =>
-            (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassTotalPointsString}{characterInfo.ID}"));
+            (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassTotalPointsString}"));
 
         static int GetSpentCrossClassPoints(CharacterInfo characterInfo) =>
-            (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassSpentPointsString}{characterInfo.ID}"));
+            (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassSpentPointsString}"));
 
         static int GetAvailableCrossClassPoints(CharacterInfo characterInfo) =>
             GetTotalCrossClassPoints(characterInfo) - GetSpentCrossClassPoints(characterInfo);
@@ -68,10 +68,10 @@ namespace CrossClass
         }
 
         static void SetTotalCrossClassPoints(CharacterInfo characterInfo, int value) =>
-            characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassTotalPointsString}{characterInfo.ID}"), false, setValue: true);
+            characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassTotalPointsString}"), false, setValue: true);
 
         static void SetSpentCrossClassPoints(CharacterInfo characterInfo, int value) =>
-            characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassSpentPointsString}{characterInfo.ID}"), false, setValue: true);
+            characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassSpentPointsString}"), false, setValue: true);
 
         static bool CanCrossClass(CharacterInfo characterInfo)
         {
@@ -86,18 +86,40 @@ namespace CrossClass
         {
             // shouldClearCrossClassValues = false;
             selectedTalentTree = GetTalentTreeForJobIdentifier(selectedTalentTreeJobPrefabIdentifier, characterInfo.Job.Prefab.Identifier);
-            for(int i = 0; i < JobTalentTrees.Count(); i++)
+            // for(int i = 0; i < JobTalentTrees.Count(); i++)
+            // {
+            //     if(JobTalentTrees.ElementAt(i) == selectedTalentTree)
+            //     {
+            //         characterInfo.ChangeSavedStatValue(StatTypes.None, i, "cross_class_current_selection", true, setValue: true);
+            //     }
+            // }
+        }
+
+        public static TalentTree GetPrimaryTalentTree(CharacterInfo characterInfo)
+        {
+            if(JobTalentTrees.TryGet(characterInfo.Job.Prefab.Identifier, out TalentTree? result))
             {
-                if(JobTalentTrees.ElementAt(i) == selectedTalentTree)
-                {
-                    characterInfo.ChangeSavedStatValue(StatTypes.None, i, "cross_class_current_selection", true, setValue: true);
-                }
+                primaryTalentTree = result;
+                return result;
             }
+            throw new NullReferenceException($"Character info for {characterInfo.ID} does not have a default talent tree somehow.");
+            // return JobTalentTrees.ElementAt((int)characterInfo.GetSavedStatValue(StatTypes.None, "cross_class_current_selection"));
         }
 
         public static TalentTree GetSelectedTalentTree(CharacterInfo characterInfo)
         {
-            return JobTalentTrees.ElementAt((int)characterInfo.GetSavedStatValue(StatTypes.None, "cross_class_current_selection"));
+            if(selectedTalentTree is TalentTree)
+            {
+                return selectedTalentTree;
+            }
+            else
+            {
+                return primaryTalentTree ?? GetPrimaryTalentTree(characterInfo);
+            }
+            // else
+            // {
+            //     return JobTalentTrees.ElementAt((int)characterInfo.GetSavedStatValue(StatTypes.None, "cross_class_current_selection"));
+            // }
         }
 
         static void LoadSavedCrossClassTalentTrees(CharacterInfo characterInfo)
@@ -117,7 +139,7 @@ namespace CrossClass
         {
             SetTotalCrossClassPoints(characterInfo, 0);
             SetSpentCrossClassPoints(characterInfo, 0);
-            var totalTalentPoints = characterInfo.GetTotalTalentPoints();
+            var currentLevel = characterInfo.GetCurrentLevel();
 
             // if(totalTalentPoints == 3)
             // {
@@ -126,22 +148,25 @@ namespace CrossClass
             // else if(totalTalentPoints > 3)
             // {
             //     int counter = 0;
-            for(int i = 0; i < totalTalentPoints; i++)
+            if(currentLevel >= 3)
             {
-                if(i < 3) continue;
-                if(i >= 3 && i % 3 == 0)
+                for(int i = 3; i < currentLevel; i++)
                 {
-                    IncrementTotalCrossClassPoints(characterInfo);
+                    if(i == 3 || i % 3 == 0)
+                    {
+                        IncrementTotalCrossClassPoints(characterInfo);
+                    }
                 }
+            }
+            else
+            {
+                return;
             }
             // }
 
-            JobTalentTrees.ForEach((tt) => {
-                if(HasCrossClassTalentTree(characterInfo, tt))
-                {
-                    IncrementSpentCrossClassPoints(characterInfo);
-                }
-            });
+            JobTalentTrees
+                .Where((tt) => HasCrossClassTalentTree(characterInfo, tt))
+                .ForEach(tt => IncrementSpentCrossClassPoints(characterInfo));
 
             // for(int i = 0; i < crossClassTalentTrees.Count(); i++)
             // {
@@ -156,7 +181,7 @@ namespace CrossClass
         public static bool HasCrossClassTalentTree(CharacterInfo characterInfo, TalentTree talentTree)
         {
             // LuaCsLogger.LogMessage($"{characterInfo.DisplayName} has the cross_class tree of {talentTree.Identifier}");
-            return characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"cross_class.{characterInfo.ID}.{talentTree.Identifier}")) != 0f;
+            return characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"cross_class.{talentTree.Identifier}")) != 0f;
         }
 
         static void UnlockCrossClassTalentTree(CharacterInfo characterInfo, TalentTree talentTree)
@@ -165,7 +190,7 @@ namespace CrossClass
             {
                 // LuaCsLogger.LogMessage($"{characterInfo.DisplayName} is unlocking the cross_class of {talentTree.Identifier}");
                 // crossClassTalentTrees.Add(talentTree);
-                characterInfo.ChangeSavedStatValue(StatTypes.None, 1f, new Identifier($"cross_class.{characterInfo.ID}.{talentTree.Identifier}"), false, setValue: true);
+                characterInfo.ChangeSavedStatValue(StatTypes.None, 1f, new Identifier($"cross_class.{talentTree.Identifier}"), false, setValue: true);
                 RefreshCrossClassTalentPoints(characterInfo);
             }
         }
@@ -218,6 +243,7 @@ namespace CrossClass
             talentMenu.talentCornerIcons.Clear();
             talentMenu.showCaseTalentFrames.Clear();
             primaryTalentTree = null;
+            // selectedTalentTree = null;
             // crossClassTalentTrees.Clear();
 
             // if(shouldClearCrossClassValues == true)
@@ -247,6 +273,7 @@ namespace CrossClass
             // RefreshCrossClassTalentPoints(characterInfo);
             var availableCrossClassPoints = GetAvailableCrossClassPoints(characterInfo);
             var crossClassButtonSuffix = availableCrossClassPoints > 0 ? $" ({availableCrossClassPoints})" : "";
+
             // LuaCsLogger.LogError($"Stepped in again; available points is: {availableCrossClassPoints}");
 
             crossClassLayout = new GUILayoutGroup(new RectTransform(new Vector2(1f, 0.1f), parent.RectTransform), true, Anchor.CenterLeft);
@@ -395,7 +422,7 @@ namespace CrossClass
                     // talentMenu.UpdateTalentInfo();
                     // }
 
-                    CreateGUI(talentMenuParentFrame, characterInfo, talentMenu);
+                    talentMenu.CreateGUI(talentMenuParentFrame, characterInfo);
                     return true;
                 });
 
@@ -450,6 +477,9 @@ namespace CrossClass
 
             if (characterInfo is null) { return false; }
 
+            // CrossClassSync.Instance.RequestCampaignConfig();
+            CrossClassSync.Instance.RequestCharacterConfig();
+
             RefreshCrossClassTalentPoints(characterInfo);
             
             // if(!TalentMenu.IsOwnCharacter(characterInfo))
@@ -468,8 +498,15 @@ namespace CrossClass
                 primaryTalentTree = GetDefaultTalentTree(characterInfo.Job.Prefab.Identifier);
                 selectedTalentTree ??= primaryTalentTree;
             }
-            LoadSavedCrossClassTalentTrees(characterInfo);
+            // LoadSavedCrossClassTalentTrees(characterInfo);
 
+            // CrossClassSync.Instance.CharacterConfig.CharacterData.SelectedClass = characterInfo.Job.Prefab.Identifier.ToString();
+            CrossClassSync.Instance.CharacterConfig.CharacterData.PrimaryClass = primaryTalentTree.Identifier.ToString();
+            CrossClassSync.Instance.CharacterConfig.CharacterData.TotalCrossClassPoints = 2;
+
+            CrossClassSync.Instance.UpdateConfig();
+
+            // CrossClassSync.Instance.RequestCharacterConfig();
             
             // characterInfo.ChangeSavedStatValue(StatTypes.None, 1.0f, $"cross_class.captain", false, 1.0f, true);
 
