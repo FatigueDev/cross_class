@@ -11,7 +11,7 @@
   <ItemGroup>
     <!-- <Compile Include="$(MSBuildThisFileDirectory)SharedSource\CompilerServices.cs" /> -->
     <Compile Include="$(MSBuildThisFileDirectory)SharedSource\Utils.cs" />
-    <!-- <Compile Include="$(MSBuildThisFileDirectory)SharedSource\CrewManager.cs" /> -->
+    <Compile Include="$(MSBuildThisFileDirectory)SharedSource\CrewManager.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SharedSource\Data\CharacterConfig_Packet.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SharedSource\Data\CharacterConfig.cs" />
     <!-- <Compile Include="$(MSBuildThisFileDirectory)SharedSource\Data\CampaignConfig.cs" /> -->

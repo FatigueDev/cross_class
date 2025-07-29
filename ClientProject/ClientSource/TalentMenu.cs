@@ -46,40 +46,47 @@ namespace CrossClass
         static Identifier crossClassSpentPointsString = "cross_class_spent_points.";
         static Identifier crossClassSelectedJob = "cross_class_selected_job";
 
-        static int GetTotalCrossClassPoints(CharacterInfo characterInfo) =>
-            (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassTotalPointsString}"));
+        static int GetTotalCrossClassPoints() =>
+            CrossClassSync.Instance.CharacterConfig.CharacterData.TotalCrossClassPoints;
+            // (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassTotalPointsString}"));
 
-        static int GetSpentCrossClassPoints(CharacterInfo characterInfo) =>
-            (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassSpentPointsString}"));
+        static int GetSpentCrossClassPoints() =>
+            CrossClassSync.Instance.CharacterConfig.CharacterData.SpentCrossClassPoints;
+            // (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassSpentPointsString}"));
 
-        static int GetAvailableCrossClassPoints(CharacterInfo characterInfo) =>
-            GetTotalCrossClassPoints(characterInfo) - GetSpentCrossClassPoints(characterInfo);
+        static int GetAvailableCrossClassPoints() =>
+            GetTotalCrossClassPoints() - GetSpentCrossClassPoints();
 
-        static void IncrementTotalCrossClassPoints(CharacterInfo characterInfo)
+        static void IncrementTotalCrossClassPoints()
         {
-            int currentPoints = GetTotalCrossClassPoints(characterInfo);
-            SetTotalCrossClassPoints(characterInfo, currentPoints + 1);
+            int currentPoints = GetTotalCrossClassPoints();
+            SetTotalCrossClassPoints(currentPoints + 1);
         }
 
-        static void IncrementSpentCrossClassPoints(CharacterInfo characterInfo)
+        static void IncrementSpentCrossClassPoints()
         {
-            int currentSpent = GetSpentCrossClassPoints(characterInfo);
-            SetSpentCrossClassPoints(characterInfo, currentSpent + 1);
+            int currentSpent = GetSpentCrossClassPoints();
+            SetSpentCrossClassPoints(currentSpent + 1);
         }
 
-        static void SetTotalCrossClassPoints(CharacterInfo characterInfo, int value) =>
-            characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassTotalPointsString}"), false, setValue: true);
-
-        static void SetSpentCrossClassPoints(CharacterInfo characterInfo, int value) =>
-            characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassSpentPointsString}"), false, setValue: true);
-
-        static bool CanCrossClass(CharacterInfo characterInfo)
+        static void SetTotalCrossClassPoints(int value)
         {
-            var availablePoints = GetAvailableCrossClassPoints(characterInfo);
-            var totalPoints = GetTotalCrossClassPoints(characterInfo);
-            var spentPoints = GetSpentCrossClassPoints(characterInfo);
+            CrossClassSync.Instance.CharacterConfig.CharacterData.TotalCrossClassPoints = value;
+            // characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassTotalPointsString}"), false, setValue: true);
+            CrossClassSync.Instance.UpdateConfig();
+        }
+
+        static void SetSpentCrossClassPoints(int value)
+        {
+            CrossClassSync.Instance.CharacterConfig.CharacterData.SpentCrossClassPoints = value;
+            // characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassSpentPointsString}"), false, setValue: true);
+            CrossClassSync.Instance.UpdateConfig();
+        }
+
+        static bool CanCrossClass()
+        {
             // LuaCsLogger.LogError($"\nAvailable points: {availablePoints}\nTotal points: {totalPoints}\nSpent points: {spentPoints}\n");
-            return GetAvailableCrossClassPoints(characterInfo) > 0;
+            return GetAvailableCrossClassPoints() > 0;
         }
 
         static void SelectTalentTree(CharacterInfo characterInfo, Identifier selectedTalentTreeJobPrefabIdentifier)
@@ -122,23 +129,10 @@ namespace CrossClass
             // }
         }
 
-        static void LoadSavedCrossClassTalentTrees(CharacterInfo characterInfo)
-        {
-            // crossClassTalentTrees.Clear();
-            foreach(TalentTree t in JobTalentTrees)
-            {
-                if(HasCrossClassTalentTree(characterInfo, t))
-                {
-                    UnlockCrossClassTalentTree(characterInfo, t);
-                }
-            }
-            RefreshCrossClassTalentPoints(characterInfo);
-        }
-
         static void RefreshCrossClassTalentPoints(CharacterInfo characterInfo)
         {
-            SetTotalCrossClassPoints(characterInfo, 0);
-            SetSpentCrossClassPoints(characterInfo, 0);
+            SetTotalCrossClassPoints(0);
+            SetSpentCrossClassPoints(0);
             var currentLevel = characterInfo.GetCurrentLevel();
 
             // if(totalTalentPoints == 3)
@@ -154,7 +148,7 @@ namespace CrossClass
                 {
                     if(i == 3 || i % 3 == 0)
                     {
-                        IncrementTotalCrossClassPoints(characterInfo);
+                        IncrementTotalCrossClassPoints();
                     }
                 }
             }
@@ -165,8 +159,8 @@ namespace CrossClass
             // }
 
             JobTalentTrees
-                .Where((tt) => HasCrossClassTalentTree(characterInfo, tt))
-                .ForEach(tt => IncrementSpentCrossClassPoints(characterInfo));
+                .Where((tt) => HasCrossClassTalentTree(tt))
+                .ForEach(tt => IncrementSpentCrossClassPoints());
 
             // for(int i = 0; i < crossClassTalentTrees.Count(); i++)
             // {
@@ -178,20 +172,23 @@ namespace CrossClass
            
         // }
 
-        public static bool HasCrossClassTalentTree(CharacterInfo characterInfo, TalentTree talentTree)
+        public static bool HasCrossClassTalentTree(TalentTree talentTree)
         {
             // LuaCsLogger.LogMessage($"{characterInfo.DisplayName} has the cross_class tree of {talentTree.Identifier}");
-            return characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"cross_class.{talentTree.Identifier}")) != 0f;
+            return CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses.Contains(talentTree.Identifier.ToString());
         }
 
-        static void UnlockCrossClassTalentTree(CharacterInfo characterInfo, TalentTree talentTree)
+        static void UnlockCrossClassTalentTree(TalentTree talentTree)
         {
-            if(!HasCrossClassTalentTree(characterInfo, talentTree))
+            if(!HasCrossClassTalentTree(talentTree))
             {
                 // LuaCsLogger.LogMessage($"{characterInfo.DisplayName} is unlocking the cross_class of {talentTree.Identifier}");
                 // crossClassTalentTrees.Add(talentTree);
-                characterInfo.ChangeSavedStatValue(StatTypes.None, 1f, new Identifier($"cross_class.{talentTree.Identifier}"), false, setValue: true);
-                RefreshCrossClassTalentPoints(characterInfo);
+                CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses = CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses.AddToArray(talentTree.Identifier.ToString());
+                CrossClassSync.Instance.CharacterConfig.CharacterData.SpentCrossClassPoints = CrossClassSync.Instance.CharacterConfig.CharacterData.SpentCrossClassPoints++;
+                CrossClassSync.Instance.UpdateConfig();
+                // characterInfo.ChangeSavedStatValue(StatTypes.None, 1f, new Identifier($"cross_class.{talentTree.Identifier}"), false, setValue: true);
+                // RefreshCrossClassTalentPoints(characterInfo);
             }
         }
 
@@ -271,7 +268,7 @@ namespace CrossClass
         static void CreateTalentSelectionBar(GUILayoutGroup parent, CharacterInfo characterInfo, GUIFrame talentMenuParentFrame, TalentMenu talentMenu)
         {
             // RefreshCrossClassTalentPoints(characterInfo);
-            var availableCrossClassPoints = GetAvailableCrossClassPoints(characterInfo);
+            var availableCrossClassPoints = GetAvailableCrossClassPoints();
             var crossClassButtonSuffix = availableCrossClassPoints > 0 ? $" ({availableCrossClassPoints})" : "";
 
             // LuaCsLogger.LogError($"Stepped in again; available points is: {availableCrossClassPoints}");
@@ -283,11 +280,12 @@ namespace CrossClass
                 {
                     // LuaCsLogger.LogMessage("Pressed Cross Class");
                     // f.Visible = !f.Visible;
-                    if(selectedTalentTree != primaryTalentTree && CanCrossClass(characterInfo))
+                    if(selectedTalentTree == null){return false;}
+                    if((selectedTalentTree != primaryTalentTree) && CanCrossClass())
                     {
-                        // LuaCsLogger.LogMessage($"Adding {selectedTalentTree!.Identifier} as a cross class tree.");
-                        UnlockCrossClassTalentTree(characterInfo, selectedTalentTree);
-                        RefreshCrossClassTalentPoints(characterInfo);
+                        LuaCsLogger.LogMessage($"Adding {selectedTalentTree!.Identifier} as a cross class tree.");
+                        UnlockCrossClassTalentTree(selectedTalentTree);
+                        // RefreshCrossClassTalentPoints(characterInfo);
                         
                         // shouldClearCrossClassValues = false;
 
@@ -299,8 +297,8 @@ namespace CrossClass
                     return true;
                 },
                 Text = $"Cross Class{crossClassButtonSuffix}",
-                Color = CanCrossClass(characterInfo) ? Color.Goldenrod : Color.Gray,
-                Enabled = CanCrossClass(characterInfo),
+                Color = CanCrossClass() ? Color.Goldenrod : Color.Gray,
+                Enabled = CanCrossClass(),
                 TextColor = Color.White,
                 HoverColor = Color.LightGoldenrodYellow,
                 SelectedColor = Color.Goldenrod,
@@ -347,7 +345,6 @@ namespace CrossClass
                 bool isSelectedTree = selectedTalentTree!.Identifier == jobPrefab.Identifier;
                 bool hasCrossClassTree =
                     HasCrossClassTalentTree(
-                        characterInfo,
                         GetTalentTreeForJobIdentifier(jobPrefab.Identifier, characterInfo.Job.Prefab.Identifier)
                     );
 
@@ -478,7 +475,7 @@ namespace CrossClass
             if (characterInfo is null) { return false; }
 
             // CrossClassSync.Instance.RequestCampaignConfig();
-            CrossClassSync.Instance.RequestCharacterConfig();
+            // CrossClassSync.Instance.RequestCharacterConfig();
 
             RefreshCrossClassTalentPoints(characterInfo);
             
@@ -502,7 +499,6 @@ namespace CrossClass
 
             // CrossClassSync.Instance.CharacterConfig.CharacterData.SelectedClass = characterInfo.Job.Prefab.Identifier.ToString();
             CrossClassSync.Instance.CharacterConfig.CharacterData.PrimaryClass = primaryTalentTree.Identifier.ToString();
-            CrossClassSync.Instance.CharacterConfig.CharacterData.TotalCrossClassPoints = 2;
 
             CrossClassSync.Instance.UpdateConfig();
 
