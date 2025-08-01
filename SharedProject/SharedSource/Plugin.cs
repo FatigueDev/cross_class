@@ -1,12 +1,6 @@
-﻿using System;
-// using System.Runtime.CompilerServices;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Runtime.CompilerServices;
-using System.Text;
+﻿using System.Runtime.CompilerServices;
 using Barotrauma;
 using HarmonyLib;
-using Microsoft.Xna.Framework;
 
 [assembly: IgnoresAccessChecksTo("Barotrauma")]
 [assembly: IgnoresAccessChecksTo("DedicatedServer")]
@@ -20,7 +14,7 @@ public partial class CrossClass : ACsMod, IAssemblyPlugin
 {
     Harmony harmony = new Harmony("com.cross_class.plugin");
     public static CrossClass Instance;
-    public static bool IsCampaign => GameMain.GameSession?.Campaign != null || GameMain.IsSingleplayer;
+    public static bool IsCampaign => GameMain.GameSession?.Campaign != null; //|| GameMain.IsSingleplayer;
     public static bool IsRunning => GameMain.GameSession?.IsRunning ?? false;
 
     public static bool IsClient => GameMain.NetworkMember != null && GameMain.NetworkMember.IsClient;
@@ -28,15 +22,21 @@ public partial class CrossClass : ACsMod, IAssemblyPlugin
     public override void Initialize()
     {
         LuaCsLogger.LogMessage("Trying to patch for Cross Class...");
+        
+        if(GameMain.IsSingleplayer)
+        {
+            LuaCsLogger.LogError("""
+            Hey mate! Developer of CrossClass here.
+            Singleplayer doesn't really work with CrossClass in it's current state, as singleplayer encourages the use of bots to pad out your skillset.
+            Since it'd also require a massive rewrite and I am truly cannot be bothered at the moment, it won't be enabled for this session.
+            If you're still keen to use it, you should host a game instead; you can play a full solo campaign there without any problems!
+            ~ Crona
+            """);
+            return;
+        }
 
         Instance = this;
-        // GameMain.LuaCs.Hook.Add("roundStart", (args)=>
-        // {
-        //     CrossClassSync.Instance.Setup();
-        //     return null;
-        // });
         CrossClassSync.Instance.Setup();
-
         LuaCsLogger.LogMessage("Sync instance initialized");
         harmony.PatchAll();
         LuaCsLogger.LogMessage("Done.");
@@ -67,7 +67,10 @@ public partial class CrossClass : ACsMod, IAssemblyPlugin
 
     void IDisposable.Dispose()
     {
-        // Cleanup your plugin!
+        if(GameMain.IsSingleplayer)
+        {
+            return;
+        }
         // Honestly do nothing rn
         LuaCsLogger.LogMessage("Trying to unpatch Cross Class...");
         harmony.UnpatchSelf();

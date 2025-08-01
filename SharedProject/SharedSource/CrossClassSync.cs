@@ -3,10 +3,14 @@
 // <3
 
 using System;
+using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Barotrauma;
 using Barotrauma.Extensions;
 using Barotrauma.Networking;
-using Microsoft.Xna.Framework;
+using HarmonyLib;
+using static Barotrauma.TalentTree;
 
 namespace CrossClass;
 
@@ -34,29 +38,19 @@ public abstract class Singleton<T> where T : class
 
 partial class CrossClassSync : Singleton<CrossClassSync>
 {
-	// public CampaignConfig CampaignConfig = CampaignConfig.GetDefault();
-	public CharacterConfig CharacterConfig = CharacterConfig.GetDefault();
+	public bool Initialized = false;
+	public CharacterConfig CharacterConfig = new CharacterConfig();
 	public CampaignMode? Campaign;
 	static readonly string configFolder = $"{ACsMod.GetStoreFolder<CrossClass>()}";
-	static readonly string campaignFile = $"campaign.xml";
-	// static readonly string characterFile = "character.xml";
 	static string campaignRoot = string.Empty;
-	static string campaignSaveFile = string.Empty;
-	static string characterSaveLocation = string.Empty;
 
-	// public override void Setup(string CampaignName = "", int CampaignID = -1)
 	public override void Setup()
 	{
-		// Config.CampaignData.CampaignName = CampaignName;
-		// Config.CampaignData.CampaignID = CampaignID;
-		// if(CrossClass.IsCampaign)
-		// {
 #if CLIENT
 		SetupClient();
 #elif SERVER
 		SetupServer();
 #endif
-		// }
 	}
 
 	private void LoadConfig()
@@ -70,112 +64,34 @@ partial class CrossClassSync : Singleton<CrossClassSync>
 		try
 		{
 			Campaign = GameMain.GameSession.Campaign;
-			// if(GameMain.IsMultiplayer)
-			// 	Campaign = Campaign as MultiPlayerCampaign;
-			// else if(GameMain.IsSingleplayer)
-			// 	Campaign = Campaign as SinglePlayerCampaign;
 
-			LuaCsLogger.Log($"Campaign is: {Campaign}");
-			LuaCsLogger.Log($"configFolder is: {configFolder}");
-			LuaCsLogger.Log($"campaignFile is: {campaignFile}");
-			LuaCsLogger.Log($"GameMain.GameSession.DataPath: {GameMain.GameSession.DataPath.SavePath}");
-			LuaCsLogger.Log($"Filname SHOULD be: \"{Path.GetFileNameWithoutExtension(GameMain.GameSession.DataPath.SavePath)}\"");
-			Path.GetFileNameWithoutExtension(GameMain.GameSession.DataPath.SavePath);
+			// Path.GetFileNameWithoutExtension(GameMain.GameSession.DataPath.SavePath);
 
 			var campaignName = Path.GetFileNameWithoutExtension(GameMain.GameSession.DataPath.SavePath).Replace(" ", "_").Trim();
-			// LuaCsLogger.Log($"campaignHashCode is: {campaignHashCode}");
 
 			campaignRoot = Path.Join(configFolder, campaignName);
-			campaignSaveFile = Path.Join(campaignRoot, campaignFile);
-			// characterSaveLocation = Path.Join(campaignRoot, "LocalPlayer.xml");
 
 			LuaCsFile.CreateDirectory(campaignRoot);
 
-			// if (LuaCsFile.Exists(campaignSaveFile))
+			// if(GameMain.IsSingleplayer)
 			// {
-
-				// CampaignConfig = LuaCsConfig.Load<CampaignConfig>(campaignSaveFile);
-				// if (Config.Version != Main.Version)
-				// {
-				// 	MigrateConfig();
-				// 	Log.Debug("Migrated Config");
-				// }
-#if CLIENT
-				// DisplayPatchNotes();
-				// characterSaveLocation = Path.Join(configFolder, campaignHashCode, GameMain.Client.nameId.ToString(), characterFile);
-				
-				// if(LuaCsFile.Exists(characterSaveLocation))
-				// {
-				// 	CharacterConfig = LuaCsConfig.Load<CharacterConfig>(characterSaveLocation);
-				// }
-				
-				// SetConfig(CampaignConfig);
-				
-#endif
-				// Config.Version = Main.Version;
-				// SaveConfig();
-				// return;
-
-			// }
-			// else
-			// {
-				LuaCsLogger.LogMessage("File doesn't exist");
-				// SaveCampaign();
+			// 	var localFilePath = Path.Join(campaignRoot, "local_player.xml");
+			// 	if(LuaCsFile.Exists(localFilePath))
+			// 	{
+			// 		CharacterConfig = LuaCsConfig.Load<CharacterConfig>(localFilePath);
+			// 	}
+			// 	else
+			// 	{
+			// 		CharacterConfig = CharacterConfig.GetDefault();
+			// 		// SaveCharacter("local_player");
+			// 	}
 			// }
 		}
 		catch
 		{
 			LuaCsLogger.Log("Failed to load config!");
-			// SaveCampaign();
-			// DefaultConfig();
 		}
 	}
-
-
-	// private void MigrateConfig()
-	// {
-	// Config.NetworkedConfig.GeneralConfig.EnableThalamusCaves = true;
-	// Config.NetworkedConfig.GeneralConfig.DistressSpawnChance = 35;
-	// Config.NetworkedConfig.GeneralConfig.MaxActiveDistressBeacons = 5;
-	// Config.NetworkedConfig.PirateConfig.PeakSpawnChance = 35;
-	// Config.NetworkedConfig.PirateConfig.EnablePirateBases = true;
-	// Config.NetworkedConfig.GeneralConfig.EnableConstructionSites = true;
-	// Config.NetworkedConfig.GeneralConfig.EnableDistressMissions = true;
-	// Config.NetworkedConfig.GeneralConfig.EnableMapFeatures = true;
-	// Config.NetworkedConfig.GeneralConfig.EnableRelayStations = true;
-	// }
-
-	private void DefaultConfig()
-	{
-		LuaCsLogger.Log("Defaulting config with campaign vals...");
-		// CharacterConfig.CharacterData.CharacterInfoID = (int)Character.Controlled.ID;
-
-		// CampaignConfig.CampaignName = Campaign.Name.ToString();
-		// if(GameMain.IsSingleplayer)
-		// {
-		// }
-		// else if(GameMain.IsMultiplayer)
-		// {
-		// 	Config.CampaignData.CampaignName = Campaign_MultiPlayer!.Name.ToString();
-		// }
-
-	}
-
-	// public void SaveCampaign()
-	// {
-	// 	// if(GameMain.IsSingleplayer)
-	// 	// {
-	// 	// 	joinedConfig = Path.Join(configFolder, "Singleplayer", Config.CampaignData.CampaignName, configFile);
-	// 	// }
-	// 	// else
-	// 	// {
-	// 	// 	joinedConfig = Path.Join(configFolder, "Multiplayer", Config.CampaignData.CampaignID.ToString(), configFile);
-	// 	// }
-	// 	// joinedConfig = Path.Join(configFolder, campaign.CampaignID.ToString(), configFile);
-	// 	// LuaCsConfig.Save(campaignSaveFile, CampaignConfig);
-	// 	LuaCsLogger.Log($"Campaign update saved to disk!");
-	// 	// LuaCsLogger.Log("Saved config to disk!");
-	// }
 
 	public void SaveCharacter(string id)
 	{
@@ -189,27 +105,41 @@ partial class CrossClassSync : Singleton<CrossClassSync>
 		// }
 		// joinedConfig = Path.Join(configFolder, campaign.CampaignID.ToString(), configFile);
 		// LuaCsLogger.Log($"Character Saved. Character Config: id={CharacterConfig.CharacterData.CharacterInfoID}");
-		LuaCsConfig.Save(Path.Join(campaignRoot, $"{id}.xml"), CharacterConfig);
-		LuaCsLogger.Log("Character update saved to disk!");
+		var options = new JsonSerializerOptions
+		{
+			PropertyNameCaseInsensitive = true,
+			WriteIndented = true
+		};
+		var characterAsJson = JsonSerializer.Serialize(CharacterConfig.CharacterData, options);
+		LuaCsFile.Write(Path.Join(campaignRoot, $"{id}.json"), characterAsJson);
+		// LuaCsConfig.Save(Path.Join(campaignRoot, $"{id}.xml"), CharacterConfig);
+		// LuaCsLogger.Log("Character update saved to disk!");
 	}
 
-	// private void ReadNetCampaignConfig(ref IReadMessage inMsg)
+	public CharacterConfigData LoadCharacter(string id)
+	{
+		var options = new JsonSerializerOptions
+		{
+			PropertyNameCaseInsensitive = true,
+			WriteIndented = true
+		};
+
+		var characterAsJson = LuaCsFile.Read(Path.Join(campaignRoot, $"{id}.json"));
+		var config = JsonSerializer.Deserialize<CharacterConfigData>(characterAsJson, options);
+		return config;
+	}
+
+	// public void SaveCharacter(CharacterInfo info)
 	// {
-	// 	try
-	// 	{
-	// 		CampaignConfig.CampaignData = INetSerializableStruct.Read<CampaignConfig_Packet>(inMsg);
-	// 	}
-	// 	catch (Exception err)
-	// 	{
-	// 		LuaCsLogger.Log(err.ToString());
-	// 	}
+	// 	LuaCsConfig.Save(Path.Join(campaignRoot, $"{info.GetIdentifierUsingOriginalName()}.xml"), CharacterConfig);
+	// 	// LuaCsLogger.Log("Character update saved to disk!");
 	// }
 
 	private void ReadNetCharacterConfig(ref IReadMessage inMsg)
 	{
 		try
 		{
-			CharacterConfig.CharacterData = INetSerializableStruct.Read<CharacterConfig_Packet>(inMsg);
+			CharacterConfig.CharacterData = INetSerializableStruct.Read<CharacterConfigData>(inMsg);
 		}
 		catch (Exception err)
 		{
@@ -217,13 +147,13 @@ partial class CrossClassSync : Singleton<CrossClassSync>
 		}
 	}
 
-	// private void WriteCampaignConfig(ref IWriteMessage outMsg) =>
-	// 	(CampaignConfig.CampaignData as INetSerializableStruct).Write(outMsg);
-
 	private void WriteCharacterConfig(ref IWriteMessage outMsg) =>
 		(CharacterConfig.CharacterData as INetSerializableStruct).Write(outMsg);
 
-	public static string StringSha256Hash(string text) =>
-		string.IsNullOrEmpty(text) ? string.Empty : BitConverter.ToString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text))).Replace("-", string.Empty);
+	public partial void UpdateConfig();
+
+	public partial void RequestCharacterConfig();
+
+	
 
 }

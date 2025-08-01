@@ -6,36 +6,18 @@ using HarmonyLib;
 
 namespace CrossClass;
 
-[HarmonyPatch]
-public class CrewManager_Patches
-{
-	[HarmonyPostfix]
-	[HarmonyPatch(typeof(CrewManager), "AddCharacter")]
-	public static void AddCharacter(Character character, ref CrewManager __instance)
-	{
-
-		LuaCsLogger.Log("Called LoadTalents in Character");
+// [HarmonyPatch]
+// public class CrewManager_Patches
+// {
+	// [HarmonyPostfix]
+	// [HarmonyPatch(typeof(CrewManager), "AddCharacter")]
+	// static void InitializeCharacter(Character character, WayPoint mainSubWaypoint, WayPoint spawnWaypoint)
+	// {
 // #if CLIENT
-#if CLIENT
-			// if(GameMain == character)
-			// {
-				LuaCsLogger.Log("Character is client, requesting config");
-				CrossClassSync.Instance.RequestCharacterConfig();
-#endif
-			// }
-			// else
-			// {
-			// 	LuaCsLogger.Log("Character is NOT client. Skip.");
-			// }
+		// LuaCsLogger.Log("Called AddCharacter");
 // #endif
-		// if(GameMain.IsSingleplayer)
-		// {
-		// 	if(__instance.IsLocalPlayer)
-		// 	{
-		// 		LuaCsLogger.Log("RequestCharacterConfig in Character.LoadTalents");
-		// 		CrossClassSync.Instance.RequestCharacterConfig();
-		// 	}
-		// }
-		
-	}
-}
+// #if CLIENT
+		// CrossClassSync.Instance.RequestCharacterConfig();
+// #endif
+	// }
+// }
