@@ -118,15 +118,15 @@ namespace CrossClass
 			if (character?.Info?.Job.Prefab == null) { __result = false; return false; }
 			if (character.Info.GetTotalTalentPoints() - selectedTalents.Count <= 0) { __result = false; return false; }
 			
-			var primaryTalentTree = GetPrimaryTalentTree(character.Info);
+			var primaryTalentTree = GetPrimaryTalentTree(character);
 			if (primaryTalentTree is null) { __result = false; return false; }
 
-			var selectedTalentTree = GetSelectedTalentTree();
+			var selectedTalentTree = GetSelectedTalentTree(character);
 			if(selectedTalentTree is null) { selectedTalentTree = primaryTalentTree; }
 
 			if(primaryTalentTree != selectedTalentTree)
 			{
-				if(!HasCrossClassTalentTree(selectedTalentTree))
+				if(!HasCrossClassTalentTree(selectedTalentTree, character))
 				{
 					__result = false;
 					return false;

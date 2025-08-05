@@ -60,110 +60,129 @@ public enum NetEvent
 	/// <summary>
 	/// Request the current config from the server
 	/// </summary>
-	CHARACTER_REQUEST
+	CHARACTER_REQUEST_SERVER
 }
 
 public static class CrossClassHelpers
 {
-	public static void UnlockCrossClassTalentTree(TalentTree talentTree)
+	public static CharacterConfigData GetCharacterConfigData(Character character)
 	{
-		List<string> crossClasses = [.. CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses];
-		crossClasses.Add(talentTree.Identifier.ToString());
-		CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses = crossClasses.ToArray(); //new CrossClass_Packet{Identifiers = crossClasses.ToImmutableArray()};
-		// CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses =
-		// 	CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses.AddItem(talentTree.Identifier.ToString());
-		// CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses = CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses.AddToArray(talentTree.Identifier.ToString());
-		SetSpentCrossClassPoints(GetSpentCrossClassPoints() + 1);
-// #if CLIENT
-// 		if(CrossClassSync.Instance.CharacterConfig.Initialized)
-// 			CrossClassSync.Instance.UpdateConfig();
-// #endif
-		// SetSavedStatValue($"{crossClassUnlockedTreesString}{talentTree.Identifier}", 1f, info);
-		// int currentSpent = GetSpentCrossClassPoints(info);
-		// SetSavedStatValue(crossClassSpentPointsString, currentSpent, info);
-	}
-	
-	public static void SetTotalCrossClassTalentPoints(int value)
-	{
-		CrossClassSync.Instance.CharacterConfig.CharacterData.TotalCrossClassPoints = value;
-// #if CLIENT
-// 		if(!GameMain.IsSingleplayer)
-// 			CrossClassSync.Instance.UpdateConfig();
-// #endif
-	}
-
-	public static void SetSpentCrossClassPoints(int value)
-	{
-		CrossClassSync.Instance.CharacterConfig.CharacterData.SpentCrossClassPoints = value;
-// #if CLIENT
-// 		if(!GameMain.IsSingleplayer)
-// 			CrossClassSync.Instance.UpdateConfig();
-// #endif
-	}
-
-	public static int GetTotalCrossClassPoints()
-	{
-		return CrossClassSync.Instance.CharacterConfig.CharacterData.TotalCrossClassPoints;
-	}
-
-	public static void UpdateCharacterTotalTalentPoints(CharacterInfo info)
-	{
-		var currentLevel = info.GetCurrentLevel();
-		int crossClassPoints = 0;
-		if (currentLevel >= 3)
+		if(CrossClassSync.Instance.CharacterConfig.ContainsKey(character.Info.OriginalName))
 		{
-			for (int i = 3; i < currentLevel; i++)
+			return CrossClassSync.Instance.CharacterConfig[character.Info.OriginalName];
+		}
+		else
+		{
+			return new CharacterConfigData
 			{
-				if (i == 3 || i % 3 == 0)
-				{
-					crossClassPoints++;
-				}
-			}
-			SetTotalCrossClassTalentPoints(crossClassPoints);
-// #if CLIENT
-// 		if(CrossClassSync.Instance.CharacterConfig.Initialized)
-// 			CrossClassSync.Instance.UpdateConfig();
-// #endif
+				OriginalName = character.Info.OriginalName,
+				PrimaryClass = character.Info.Job.Prefab.Identifier.ToString(),
+				SelectedClass = character.Info.Job.Prefab.Identifier.ToString(),
+				SpentCrossClassPoints = 0,
+				TotalCrossClassPoints = 0,
+				CrossClasses = []
+			};
 		}
 	}
 
-	public static int GetSpentCrossClassPoints()
+	public static void ApplyChangeset(Character character, CharacterConfigData configData)
 	{
-		return CrossClassSync.Instance.CharacterConfig.CharacterData.SpentCrossClassPoints;
+		Dictionary<string, CharacterConfigData> changeset = new Dictionary<string, CharacterConfigData>(CrossClassSync.Instance.CharacterConfig);
+		changeset[character.Info.OriginalName] = configData;
+		CrossClassSync.Instance.CharacterConfig = changeset;
+		CrossClassSync.Instance.UpdateConfig();
+	}
+
+	public static void UnlockCrossClassTalentTree(TalentTree talentTree, Character character)
+	{
+		CharacterConfigData d = GetCharacterConfigData(character);
+
+		List<string> crossClasses = [.. d.CrossClasses];
+		crossClasses.Add(talentTree.Identifier.ToString());
+		d.CrossClasses = crossClasses.ToArray();
+
+		ApplyChangeset(character, d);
+
+		SetSpentCrossClassPoints(GetSpentCrossClassPoints(character) + 1, character);
+	}
+	
+	public static void SetTotalCrossClassTalentPoints(int value, Character character)
+	{
+		var configData = GetCharacterConfigData(character);
+		configData.TotalCrossClassPoints = value;
+		ApplyChangeset(character, configData);
+	}
+
+	public static void SetSpentCrossClassPoints(int value, Character character)
+	{
+		var configData = GetCharacterConfigData(character);
+		configData.SpentCrossClassPoints = value;
+		ApplyChangeset(character, configData);
+	}
+
+	public static int GetTotalCrossClassPoints(Character character)
+	{
+		return GetCharacterConfigData(character).TotalCrossClassPoints;
+	}
+
+	public static void UpdateCharacterTotalTalentPoints(Character character)
+	{
+		var currentLevel = character.Info.GetCurrentLevel();
+		int crossClassPoints = 0;
+		// if (currentLevel >= 3)
+		// {
+		for (int i = 0; i < currentLevel; i++)
+		{
+			if (i != 0 && (i % 3 == 0))
+			{
+				crossClassPoints++;
+			}
+		}
+		SetTotalCrossClassTalentPoints(crossClassPoints, character);
+		// }
+	}
+
+	public static int GetSpentCrossClassPoints(Character character)
+	{
+		return GetCharacterConfigData(character).SpentCrossClassPoints;
+		// return CrossClassSync.Instance.CharacterConfig.CharacterData.SpentCrossClassPoints;
 		//return GetSavedStatValue(crossClassSpentPointsString, info);
 	}
 
-	public static int GetAvailableCrossClassPoints()
+	public static int GetAvailableCrossClassPoints(Character character)
 	{
-		return GetTotalCrossClassPoints() - GetSpentCrossClassPoints();
+		return GetTotalCrossClassPoints(character) - GetSpentCrossClassPoints(character);
 	}
 
-	public static bool CanCrossClass()
+	public static bool CanCrossClass(Character character)
 	{
 		// var availablePoints = GetAvailableCrossClassPoints(characterInfo);
 		// var totalPoints = GetTotalCrossClassPoints(characterInfo);
 		// var spentPoints = GetSpentCrossClassPoints(characterInfo);
 		// LuaCsLogger.LogError($"\nAvailable points: {availablePoints}\nTotal points: {totalPoints}\nSpent points: {spentPoints}\n");
-		return GetAvailableCrossClassPoints() > 0;
+		return GetAvailableCrossClassPoints(character) > 0;
 	}
 
-	public static bool HasCrossClassTalentTree(TalentTree talentTree)
+	public static bool HasCrossClassTalentTree(TalentTree talentTree, Character character)
 	{
-		return CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses.Contains(talentTree.Identifier.ToString());
+		return GetCharacterConfigData(character).CrossClasses.Contains(talentTree.Identifier.ToString());
+		// return CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses.Contains(talentTree.Identifier.ToString());
 		// return GetSavedStatValue($"{crossClassUnlockedTreesString}{talentTree.Identifier}", info) != 0;
 	}
 
-	public static TalentTree? GetPrimaryTalentTree(CharacterInfo info)
+	public static TalentTree? GetPrimaryTalentTree(Character character)
 	{
-		if(string.IsNullOrEmpty(CrossClassSync.Instance.CharacterConfig.CharacterData.PrimaryClass))
-		{
-			CrossClassSync.Instance.CharacterConfig.CharacterData.PrimaryClass = info.Job.Prefab.Identifier.ToString();
-// #if CLIENT
-// 			if(!GameMain.IsSingleplayer)
-// 				CrossClassSync.Instance.UpdateConfig();
-// #endif
-		}
-		return GetTalentTreeForJobIdentifier(info.Job.Prefab.Identifier);
+// 		var configData = GetCharacterConfigData(character);
+// 		if(string.IsNullOrEmpty(configData.PrimaryClass))
+// 		{
+// 			configData.PrimaryClass = character.Info.Job.prefab.Identifier.ToString();
+// 			// CrossClassSync.Instance.CharacterConfig.CharacterData.PrimaryClass = info.Job.Prefab.Identifier.ToString();
+// // #if CLIENT
+// // 			if(!GameMain.IsSingleplayer)
+// // 				CrossClassSync.Instance.UpdateConfig();
+// // #endif
+// 		}
+		return GetTalentTreeForJobIdentifier(character.Info.Job.Prefab.Identifier);
 
 		// if (JobTalentTrees.TryGet(info.Job.Prefab.Identifier, out TalentTree defaultTree))
 		// {
@@ -177,9 +196,10 @@ public static class CrossClassHelpers
 		// }
 	}
 
-	public static TalentTree? GetSelectedTalentTree()
+	public static TalentTree? GetSelectedTalentTree(Character character)
 	{
-		return GetTalentTreeForJobIdentifier(CrossClassSync.Instance.CharacterConfig.CharacterData.SelectedClass);
+		return GetTalentTreeForJobIdentifier(GetCharacterConfigData(character).SelectedClass);
+		// return GetTalentTreeForJobIdentifier(CrossClassSync.Instance.CharacterConfig.CharacterData.SelectedClass);
 		// return SelectedTalentTree ?? GetPrimaryTalentTree(info) ?? null;
 		// foreach (TalentTree tree in TalentTree.JobTalentTrees)
 		// {
@@ -191,10 +211,11 @@ public static class CrossClassHelpers
 		// return GetPrimaryTalentTree(info);
 	}
 
-	public static IEnumerable<TalentTree> GetCrossClassTalentTrees()
+	public static IEnumerable<TalentTree> GetCrossClassTalentTrees(Character character)
 	{
 		IEnumerable<TalentTree> crossClassTalentTrees = [];
-		foreach(string talentIdentifierString in CrossClassSync.Instance.CharacterConfig.CharacterData.CrossClasses)
+		var configData = GetCharacterConfigData(character);
+		foreach(string talentIdentifierString in configData.CrossClasses)
 		{
 			if(GetTalentTreeForJobIdentifier(talentIdentifierString) is TalentTree talentTree)
 			{
@@ -204,9 +225,12 @@ public static class CrossClassHelpers
 		return crossClassTalentTrees;
 	}
 
-	public static void SetPrimaryTalentTree(Identifier talentTreeIdentifier)
+	public static void SetPrimaryTalentTree(Identifier talentTreeIdentifier, Character character)
 	{
-		CrossClassSync.Instance.CharacterConfig.CharacterData.PrimaryClass = talentTreeIdentifier.ToString();
+		var configData = GetCharacterConfigData(character);
+		configData.PrimaryClass = talentTreeIdentifier.ToString();
+		ApplyChangeset(character, configData);
+		// CrossClassSync.Instance.CharacterConfig.CharacterData.PrimaryClass = talentTreeIdentifier.ToString();
 // #if CLIENT
 // 		if(!GameMain.IsSingleplayer)
 // 			CrossClassSync.Instance.UpdateConfig();
@@ -217,9 +241,12 @@ public static class CrossClassHelpers
 		// SetSavedStatValue($"{crossClassSelectedTreeString}{selectedTalentTreeJobPrefabIdentifier}", 1, info);
 	}
 
-	public static void SetSelectedTalentTree(Identifier talentTreeIdentifier)
+	public static void SetSelectedTalentTree(Identifier talentTreeIdentifier, Character character)
 	{
-		CrossClassSync.Instance.CharacterConfig.CharacterData.SelectedClass = talentTreeIdentifier.ToString();
+		var configData = GetCharacterConfigData(character);
+		configData.SelectedClass = talentTreeIdentifier.ToString();
+		ApplyChangeset(character, configData);
+		// CrossClassSync.Instance.CharacterConfig.CharacterData.SelectedClass = talentTreeIdentifier.ToString();
 // #if CLIENT
 // 		if(!GameMain.IsSingleplayer)
 // 			CrossClassSync.Instance.UpdateConfig();

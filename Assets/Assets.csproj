@@ -10,26 +10,28 @@
     <Import Project="../Build.props"/>
     
     <ItemGroup>
+      <!-- <PackageReference Include="Newtonsoft.Json" Version="13.0.3" /> -->
       <!-- <Content Include="..\README.md">
         <Link>README.md</Link>
       </Content> -->
     </ItemGroup>
 
-    <ItemGroup>
-      <!-- <Folder Include="Content" /> -->
-    </ItemGroup>
+    <!-- <ItemGroup>
+      <Folder Include="Libraries" />
+    </ItemGroup> -->
 
     <Target Name="CopyFiles" AfterTargets="Build">
         <ItemGroup>
             <FileList Include="$(ProjectDir)filelist.xml" />
             <RunConfig Include="$(ProjectDir)RunConfig.xml" />
             <Icon Include="$(ProjectDir)cross_class_icon.png" />
-            <Content Include="$(ProjectDir)Content\**\*.*" />
+            <!-- <Libraries Include="$(ProjectDir)Libraries\**\*.*" /> -->
         </ItemGroup>
+        <!-- <Copy SourceFiles="..\Refs\Newtonsoft.Json.dll" DestinationFiles="$(ModDeployDir)bin\libs\Newtonsoft.Json.dll" /> -->
         <Copy SourceFiles="@(FileList)" DestinationFiles="$(ModDeployDir)filelist.xml" />
         <Copy SourceFiles="@(RunConfig)" DestinationFiles="$(ModDeployDir)CSharp\RunConfig.xml" />
         <Copy SourceFiles="@(Icon)" DestinationFiles="$(ModDeployDir)\cross_class_icon.png" />
-        <Copy SourceFiles="@(Content)" DestinationFolder="$(ModDeployDir)Content\%(RecursiveDir)" />
+        <!-- <Copy SourceFiles="@(Libraries)" DestinationFolder="$(ModDeployDir)CSharp\Libraries\%(RecursiveDir)" /> -->
     </Target>
 
 

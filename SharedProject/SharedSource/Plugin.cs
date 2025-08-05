@@ -36,13 +36,13 @@ public partial class CrossClass : ACsMod, IAssemblyPlugin
         }
 
         Instance = this;
-        CrossClassSync.Instance.Setup();
         LuaCsLogger.LogMessage("Sync instance initialized");
         harmony.PatchAll();
+        CrossClassSync.Instance.Setup();
         LuaCsLogger.LogMessage("Done.");
     }
 
-     public static void Hook(string name, string hookName, LuaCsFunc hook) => 
+    public static void Hook(string name, string hookName, LuaCsFunc hook) => 
             GameMain.LuaCs.Hook.Add(name, hookName, hook, Instance);
         // public static void HookMethod(string identifier, MethodInfo method, LuaCsPatch patch, LuaCsHook.HookMethodType hookType) =>
         //     GameMain.LuaCs.Hook.HookMethod(identifier, method, patch, hookType, Instance);

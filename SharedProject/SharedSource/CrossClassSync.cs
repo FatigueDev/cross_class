@@ -5,12 +5,14 @@
 using System;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Barotrauma;
 using Barotrauma.Extensions;
 using Barotrauma.Networking;
 using HarmonyLib;
 using static Barotrauma.TalentTree;
+// using Newtonsoft.Json;
 
 namespace CrossClass;
 
@@ -38,108 +40,35 @@ public abstract class Singleton<T> where T : class
 
 partial class CrossClassSync : Singleton<CrossClassSync>
 {
-	public bool Initialized = false;
-	public CharacterConfig CharacterConfig = new CharacterConfig();
+	public Dictionary<string, CharacterConfigData> CharacterConfig = [];
 	public CampaignMode? Campaign;
-	static readonly string configFolder = $"{ACsMod.GetStoreFolder<CrossClass>()}";
-	static string campaignRoot = string.Empty;
+	public bool Initialized = false;
+	public bool ShouldSave = false;
+
+	public JsonSerializerOptions JsonSerializerOptions = new JsonSerializerOptions{
+		AllowTrailingCommas = true,
+		WriteIndented = true,
+		PropertyNameCaseInsensitive = true
+	};
 
 	public override void Setup()
 	{
-#if CLIENT
-		SetupClient();
-#elif SERVER
+#if SERVER
 		SetupServer();
+#elif CLIENT
+		SetupClient();
 #endif
 	}
-
-	private void LoadConfig()
-	{
-		if (!CrossClass.IsCampaign)
-		{
-			LuaCsLogger.Log("Tried to load config, but the game mode was not Campaign so we're skipping.");
-			return;
-		}
-
-		try
-		{
-			Campaign = GameMain.GameSession.Campaign;
-
-			// Path.GetFileNameWithoutExtension(GameMain.GameSession.DataPath.SavePath);
-
-			var campaignName = Path.GetFileNameWithoutExtension(GameMain.GameSession.DataPath.SavePath).Replace(" ", "_").Trim();
-
-			campaignRoot = Path.Join(configFolder, campaignName);
-
-			LuaCsFile.CreateDirectory(campaignRoot);
-
-			// if(GameMain.IsSingleplayer)
-			// {
-			// 	var localFilePath = Path.Join(campaignRoot, "local_player.xml");
-			// 	if(LuaCsFile.Exists(localFilePath))
-			// 	{
-			// 		CharacterConfig = LuaCsConfig.Load<CharacterConfig>(localFilePath);
-			// 	}
-			// 	else
-			// 	{
-			// 		CharacterConfig = CharacterConfig.GetDefault();
-			// 		// SaveCharacter("local_player");
-			// 	}
-			// }
-		}
-		catch
-		{
-			LuaCsLogger.Log("Failed to load config!");
-		}
-	}
-
-	public void SaveCharacter(string id)
-	{
-		// if(GameMain.IsSingleplayer)
-		// {
-		// 	joinedConfig = Path.Join(configFolder, "Singleplayer", Config.CampaignData.CampaignName, configFile);
-		// }
-		// else
-		// {
-		// 	joinedConfig = Path.Join(configFolder, "Multiplayer", Config.CampaignData.CampaignID.ToString(), configFile);
-		// }
-		// joinedConfig = Path.Join(configFolder, campaign.CampaignID.ToString(), configFile);
-		// LuaCsLogger.Log($"Character Saved. Character Config: id={CharacterConfig.CharacterData.CharacterInfoID}");
-		var options = new JsonSerializerOptions
-		{
-			PropertyNameCaseInsensitive = true,
-			WriteIndented = true
-		};
-		var characterAsJson = JsonSerializer.Serialize(CharacterConfig.CharacterData, options);
-		LuaCsFile.Write(Path.Join(campaignRoot, $"{id}.json"), characterAsJson);
-		// LuaCsConfig.Save(Path.Join(campaignRoot, $"{id}.xml"), CharacterConfig);
-		// LuaCsLogger.Log("Character update saved to disk!");
-	}
-
-	public CharacterConfigData LoadCharacter(string id)
-	{
-		var options = new JsonSerializerOptions
-		{
-			PropertyNameCaseInsensitive = true,
-			WriteIndented = true
-		};
-
-		var characterAsJson = LuaCsFile.Read(Path.Join(campaignRoot, $"{id}.json"));
-		var config = JsonSerializer.Deserialize<CharacterConfigData>(characterAsJson, options);
-		return config;
-	}
-
-	// public void SaveCharacter(CharacterInfo info)
-	// {
-	// 	LuaCsConfig.Save(Path.Join(campaignRoot, $"{info.GetIdentifierUsingOriginalName()}.xml"), CharacterConfig);
-	// 	// LuaCsLogger.Log("Character update saved to disk!");
-	// }
 
 	private void ReadNetCharacterConfig(ref IReadMessage inMsg)
 	{
 		try
 		{
-			CharacterConfig.CharacterData = INetSerializableStruct.Read<CharacterConfigData>(inMsg);
+			var characterJson = inMsg.ReadString();
+			var characterData = JsonSerializer.Deserialize<Dictionary<string, CharacterConfigData>>(characterJson, JsonSerializerOptions);
+			// var characterData = INetSerializableStruct.Read<CharacterConfigData>(inMsg);
+			CharacterConfig = characterData; //?? new Dictionary<string, CharacterConfigData>();
+			
 		}
 		catch (Exception err)
 		{
@@ -147,13 +76,20 @@ partial class CrossClassSync : Singleton<CrossClassSync>
 		}
 	}
 
-	private void WriteCharacterConfig(ref IWriteMessage outMsg) =>
-		(CharacterConfig.CharacterData as INetSerializableStruct).Write(outMsg);
+	private void WriteCharacterConfig(ref IWriteMessage outMsg)
+	{
+		// foreach(var (id, config) in CharacterConfig)
+		// {
+			// var serialized = (INetSerializableStruct)config.CharacterData;
+			// outMsg.WriteNetSerializableStruct(config.CharacterData)
+			
+			var characterJson = JsonSerializer.Serialize(CharacterConfig, JsonSerializerOptions);
+			outMsg.WriteString(characterJson);
 
-	public partial void UpdateConfig();
+			// (Instance.CharacterConfig[config.OriginalName] as INetSerializableStruct).Write(outMsg);
+		// }
+	}
 
-	public partial void RequestCharacterConfig();
-
-	
+	public partial void UpdateConfig();	
 
 }

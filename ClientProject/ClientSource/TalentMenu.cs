@@ -20,11 +20,12 @@ namespace CrossClass
     {
         public void Create(GUILayoutGroup parent, CharacterInfo characterInfo, GUIFrame talentMenuParentFrame, TalentMenu talentMenu)
         {
-            var availableCrossClassPoints = GetAvailableCrossClassPoints();
+            var character = characterInfo.Character;
+            var availableCrossClassPoints = GetAvailableCrossClassPoints(character);
             var crossClassButtonSuffix = availableCrossClassPoints > 0 ? $" ({availableCrossClassPoints})" : "";
-            var canCrossClass = CanCrossClass();
-            var primaryTalentTree = GetPrimaryTalentTree(characterInfo);
-            var selectedTalentTree = GetSelectedTalentTree();
+            var primaryTalentTree = GetPrimaryTalentTree(character);
+            var selectedTalentTree = GetSelectedTalentTree(character);
+            var canCrossClass = CanCrossClass(character) && !HasCrossClassTalentTree(selectedTalentTree, character) && selectedTalentTree != primaryTalentTree;
             // LuaCsLogger.LogError($"Stepped in again; available points is: {availableCrossClassPoints}");
 
             var crossClassLayout = new GUILayoutGroup(new RectTransform(new Vector2(1f, 0.1f), parent.RectTransform), true, Anchor.CenterLeft);
@@ -34,10 +35,10 @@ namespace CrossClass
                 {
                     // LuaCsLogger.LogMessage("Pressed Cross Class");
                     // f.Visible = !f.Visible;
-                    if (GetSelectedTalentTree() != GetPrimaryTalentTree(characterInfo) && CanCrossClass())
+                    if (GetSelectedTalentTree(character) != GetPrimaryTalentTree(character) && CanCrossClass(character))
                     {
                         // LuaCsLogger.LogMessage($"Adding {selectedTalentTree!.Identifier} as a cross class tree.");
-                        UnlockCrossClassTalentTree(GetSelectedTalentTree());
+                        UnlockCrossClassTalentTree(GetSelectedTalentTree(character), character);
                         // CrossClassSync.Instance.UpdateConfig();
                         // CrossClassUtils.RefreshCrossClassTalentPoints(characterInfo);
 
@@ -64,7 +65,7 @@ namespace CrossClass
             var crossClassButtonList = new GUIListBox(new RectTransform(new Vector2(0.8f, 0.9f), crossClassLayout.RectTransform), true);
 
             bool selectedIsPrimary = selectedTalentTree == primaryTalentTree;
-            bool selectedIsUnlocked = HasCrossClassTalentTree(selectedTalentTree) || selectedIsPrimary;
+            bool selectedIsUnlocked = HasCrossClassTalentTree(selectedTalentTree, character) || selectedIsPrimary;
 
             var selectedTalentLocalizedName = JobPrefab.Prefabs[selectedTalentTree.Identifier].Name;
             string selectedClassLabelText = string.Empty;
@@ -117,11 +118,11 @@ namespace CrossClass
                 // {
                 // var isCrossClassSkill = characterInfo.GetSavedStatValue(StatTypes.None, $"cross_class.{characterInfo.Job.Prefab.Identifier}");
 
-                var primaryTalentTree = GetPrimaryTalentTree(characterInfo);
+                var primaryTalentTree = GetPrimaryTalentTree(character);
                 var talentTreeForJob = GetTalentTreeForJobIdentifier(jobPrefab.Identifier);
                 bool isPrimary = primaryTalentTree == talentTreeForJob;
-                bool isSelectedTree = GetSelectedTalentTree() == talentTreeForJob;
-                bool hasCrossClassTree = HasCrossClassTalentTree(talentTreeForJob);
+                bool isSelectedTree = GetSelectedTalentTree(character) == talentTreeForJob;
+                bool hasCrossClassTree = HasCrossClassTalentTree(talentTreeForJob, character);
 
                 // LuaCsLogger.LogError($"State of hasCrossClassTree: #{hasCrossClassTree}");
 
@@ -182,7 +183,7 @@ namespace CrossClass
 
                 iconButton.OnButtonDown += (GUIButton.OnButtonDownHandler)(() =>
                 {
-                    SetSelectedTalentTree(jobPrefab.Identifier);
+                    SetSelectedTalentTree(jobPrefab.Identifier, character);
                     // CreateGUIForSelectedTalentTree(talentMenuParentFrame, characterInfo, talentMenu);
 
                     // LuaCsLogger.LogMessage($"Selected: {jobPrefab.Identifier}");
@@ -281,9 +282,12 @@ namespace CrossClass
         [HarmonyPatch("Barotrauma.TalentMenu", "CreateGUI")]
         static bool CreateGUI(GUIFrame parent, CharacterInfo? characterInfo, TalentMenu __instance)
         {
+            // if(CrossClassSync.Instance.Initialized == false)
+            //     return true;
+            
             talentMenuParent ??= parent;
             // if(!CrossClassSync.Instance.Initialized) return true;
-            CrossClassSync.Instance.UpdateConfig();
+            // CrossClassSync.Instance.UpdateConfig();
             
             __instance.characterInfo = characterInfo;
             __instance.character = characterInfo?.Character;
@@ -305,46 +309,47 @@ namespace CrossClass
                 Stretch = true
             };
 
-            if (characterInfo != null)
+            if (characterInfo != null && characterInfo?.Character != null)
             {
+                var character = characterInfo.Character;
                 // foreach(var talent in characterInfo.UnlockedTalents)
                 // {
                 //     LuaCsLogger.Log($"Character {characterInfo.Name} has `{talent}");
                 // }
 
-                if(TalentMenu.IsOwnCharacter(characterInfo))
-                {
-                    UpdateCharacterTotalTalentPoints(characterInfo);
-                    // if(GameMain.IsSingleplayer)
-                    // {
-                    //     CrossClassSync.Instance.SaveCharacter(characterInfo);
-                    // }
+                // if(TalentMenu.IsOwnCharacter(characterInfo))
+                // {
+                UpdateCharacterTotalTalentPoints(character);
+                // if(GameMain.IsSingleplayer)
+                // {
+                //     CrossClassSync.Instance.SaveCharacter(characterInfo);
+                // }
 
-                    if(string.IsNullOrEmpty(CrossClassSync.Instance.CharacterConfig.CharacterData.PrimaryClass))
-                    {
-                        SetPrimaryTalentTree(characterInfo.Job.Prefab.Identifier.ToString());
-                    }
-                    
-                    if(string.IsNullOrEmpty(CrossClassSync.Instance.CharacterConfig.CharacterData.SelectedClass))
-                    {
-                        SetSelectedTalentTree(characterInfo.Job.Prefab.Identifier.ToString());
-                    }
-                    __instance.CreateStatPanel(contentLayout!, characterInfo);
-                    horizontalLine = new GUIFrame(new RectTransform(new Vector2(1f, 1f), contentLayout!.RectTransform), style: "HorizontalLine");
-                    talentSelectionBar = new TalentSelectionBar();
+                // if(string.IsNullOrEmpty(CrossClassSync.Instance.CharacterConfig.CharacterData.PrimaryClass))
+                // {
+                //     SetPrimaryTalentTree(characterInfo.Job.Prefab.Identifier.ToString());
+                // }
+                
+                // if(string.IsNullOrEmpty(CrossClassSync.Instance.CharacterConfig.CharacterData.SelectedClass))
+                // {
+                //     SetSelectedTalentTree(characterInfo.Job.Prefab.Identifier.ToString());
+                // }
+                __instance.CreateStatPanel(contentLayout!, characterInfo);
+                horizontalLine = new GUIFrame(new RectTransform(new Vector2(1f, 1f), contentLayout!.RectTransform), style: "HorizontalLine");
+                talentSelectionBar = new TalentSelectionBar();
 
-                    talentSelectionBar.Create(contentLayout, characterInfo, parent, __instance);
-                    __instance.CreateTalentMenu(contentLayout, characterInfo, GetSelectedTalentTree());
-                }
-                else
-                {
-                    __instance.CreateStatPanel(contentLayout!, characterInfo);
-                    if(GetTalentTreeForJobIdentifier(characterInfo.Job.Prefab.Identifier) is TalentTree jobTree)
-                    {
-                        horizontalLine = new GUIFrame(new RectTransform(new Vector2(1f, 1f), contentLayout!.RectTransform), style: "HorizontalLine");
-                        __instance.CreateTalentMenu(contentLayout, characterInfo, jobTree);
-                    }                    
-                }
+                talentSelectionBar.Create(contentLayout, characterInfo, parent, __instance);
+                __instance.CreateTalentMenu(contentLayout, characterInfo, GetSelectedTalentTree(character));
+                // }
+                // else
+                // {
+                //     __instance.CreateStatPanel(contentLayout!, characterInfo);
+                //     if(GetTalentTreeForJobIdentifier(characterInfo.Job.Prefab.Identifier) is TalentTree jobTree)
+                //     {
+                //         horizontalLine = new GUIFrame(new RectTransform(new Vector2(1f, 1f), contentLayout!.RectTransform), style: "HorizontalLine");
+                //         __instance.CreateTalentMenu(contentLayout, characterInfo, jobTree);
+                //     }                    
+                // }
 
                 __instance.CreateFooter(contentLayout, characterInfo);
                 __instance.UpdateTalentInfo();
@@ -504,24 +509,12 @@ namespace CrossClass
             return false;
         }
 
-        [HarmonyPostfix]
-        [HarmonyPatch("Barotrauma.TalentMenu", "ApplyTalents")]
-        static void ApplyTalents(Character controlledCharacter, ref TalentMenu __instance)
-        {
-            __instance.CreateGUI(talentMenuParent, __instance.characterInfo);
-            
-            // foreach (Identifier talent in CheckTalentSelection(controlledCharacter, __instance.selectedTalents))
-            // {
-            //     controlledCharacter.GiveTalent(talent);
-            //     if (GameMain.Client != null)
-            //     {
-            //         GameMain.Client.CreateEntityEvent(controlledCharacter, new Character.UpdateTalentsEventData());
-            //     }
-            // }
-
-            // __instance.UpdateTalentInfo();
-            // return false;
-        }
+        // [HarmonyPostfix]
+        // [HarmonyPatch("Barotrauma.TalentMenu", "ApplyTalents")]
+        // static void ApplyTalents(Character controlledCharacter, ref TalentMenu __instance)
+        // {
+            // __instance.CreateGUI(talentMenuParent, __instance.characterInfo);
+        // }
 
         [HarmonyPrefix]
         [HarmonyPatch("Barotrauma.TalentMenu", "CreateTalentOption")]
@@ -721,147 +714,5 @@ namespace CrossClass
             __instance.talentCornerIcons.Add(new TalentCornerIcon(subTree.Identifier, index, cornerIcon, talentBackground, talentBackgroundHighlight));
             return false;
         }
-    
-        // [HarmonyPrefix]
-        // [HarmonyPatch("Barotrauma.TalentMenu", "UpdateTalentInfo")]
-        // static bool UpdateTalentInfo(ref TalentMenu __instance)
-        // {
-        //     if (__instance.character is null || __instance.characterInfo is null) { return false; }
-
-        //     bool unlockedAllTalents = __instance.character.HasUnlockedAllTalents();
-
-        //     if (__instance.experienceBar is null || __instance.experienceText is null) { return false; }
-
-        //     if (unlockedAllTalents)
-        //     {
-        //         __instance.experienceText.Text = string.Empty;
-        //         __instance.experienceBar.BarSize = 1f;
-        //     }
-        //     else
-        //     {
-        //         __instance.experienceText.Text = $"{__instance.characterInfo.ExperiencePoints - __instance.characterInfo.GetExperienceRequiredForCurrentLevel()} / {__instance.characterInfo.GetExperienceRequiredToLevelUp() - __instance.characterInfo.GetExperienceRequiredForCurrentLevel()}";
-        //         __instance.experienceBar.BarSize = __instance.characterInfo.GetProgressTowardsNextLevel();
-        //     }
-
-        //     __instance.selectedTalents = CheckTalentSelection(__instance.character, __instance.selectedTalents).ToHashSet();
-
-        //     string pointsLeft = __instance.characterInfo.GetAvailableTalentPoints().ToString();
-
-        //     int talentCount = __instance.selectedTalents.Count - __instance.characterInfo.GetUnlockedTalentsInTree().Count() - __instance.characterInfo.GetUnlockedTalentsOutsideTree().Count();
-
-        //     if (unlockedAllTalents)
-        //     {
-        //         __instance.talentPointText?.SetRichText($"‖color:{Color.Gray.ToStringHex()}‖{TextManager.Get("talentmenu.alltalentsunlocked")}‖color:end‖");
-        //     }
-        //     else if (talentCount > 0)
-        //     {
-        //         string pointsUsed = $"‖color:{XMLExtensions.ToStringHex(GUIStyle.Red)}‖{-talentCount}‖color:end‖";
-        //         LocalizedString localizedString = TextManager.GetWithVariables("talentmenu.points.spending", ("[amount]", pointsLeft), ("[used]", pointsUsed));
-        //         __instance.talentPointText?.SetRichText(localizedString);
-        //     }
-        //     else
-        //     {
-        //         __instance.talentPointText?.SetRichText(TextManager.GetWithVariable("talentmenu.points", "[amount]", pointsLeft));
-        //     }
-
-        //     foreach (TalentCornerIcon cornerIcon in __instance.talentCornerIcons)
-        //     {
-        //         TalentStages state = GetTalentOptionStageState(__instance.character, cornerIcon.TalentTree, cornerIcon.Index, __instance.selectedTalents);
-        //         TalentTreeStyle style = talentStageStyles[state];
-        //         GUIComponentStyle newStyle = style.ComponentStyle;
-        //         cornerIcon.IconComponent.ApplyStyle(newStyle);
-        //         cornerIcon.IconComponent.Color = newStyle.Color;
-        //         cornerIcon.BackgroundComponent.Color = style.Color;
-        //         cornerIcon.GlowComponent.Visible = state == Highlighted;
-        //     }
-
-        //     foreach (TalentButton talentButton in __instance.talentButtons)
-        //     {
-        //         TalentStages stage = GetTalentState(__instance.character, talentButton.Identifier, __instance.selectedTalents);
-        //         ApplyTalentIconColor(stage, talentButton.IconComponent, talentButton.Prefab.ColorOverride);
-        //     }
-
-        //     foreach (TalentShowCaseButton showCaseTalentButton in __instance.talentShowCaseButtons)
-        //     {
-        //         TalentStages collectiveTalentStage = GetCollectiveTalentState(__instance.character, showCaseTalentButton.Buttons, __instance.selectedTalents);
-        //         ApplyTalentIconColor(collectiveTalentStage, showCaseTalentButton.IconComponent, Option<Color>.None());
-        //     }
-
-        //     if (__instance.skillListBox is null) { return false; }
-
-        //     TabMenu.CreateSkillList(__instance.character, __instance.characterInfo, __instance.skillListBox);
-
-        //     static TalentStages GetTalentState(Character character, Identifier talentIdentifier, IReadOnlyCollection<Identifier> selectedTalents)
-        //     {
-        //         bool unselectable = !IsViableTalentForCharacter(character, talentIdentifier, selectedTalents) || character.HasTalent(talentIdentifier);
-        //         TalentStages stage = unselectable ? Locked : Available;
-        //         if (unselectable)
-        //         {
-        //             stage =  Locked;
-        //         }
-
-        //         if (character.HasTalent(talentIdentifier))
-        //         {
-        //             stage =  Unlocked;
-        //         }
-        //         else if (selectedTalents.Contains(talentIdentifier))
-        //         {
-        //             stage =  Highlighted;
-        //         }
-
-        //         return stage;
-        //     }
-
-        //     static void ApplyTalentIconColor(TalentStages stage, GUIComponent component, Option<Color> colorOverride)
-        //     {
-        //         Color color = stage switch
-        //         {
-        //             Invalid => unselectableColor,
-        //             Locked => unselectableColor,
-        //             Unlocked => GetColorOrOverride(GUIStyle.Green, colorOverride),
-        //             Highlighted => GetColorOrOverride(GUIStyle.Orange, colorOverride),
-        //             Available => GetColorOrOverride(unselectableColor, colorOverride),
-        //             _ => throw new ArgumentOutOfRangeException(nameof(stage), stage, null)
-        //         };
-
-        //         component.Color = color;
-        //         component.HoverColor = Color.Lerp(color, Color.White, 0.7f);
-
-        //         static Color GetColorOrOverride(Color color, Option<Color> colorOverride) => colorOverride.TryUnwrap(out Color overrideColor) ? overrideColor : color;
-        //     }
-
-        //     // this could also be reused for setting colors for talentCornerIcons but that's for another time
-        //     static TalentStages GetCollectiveTalentState(Character character, IReadOnlyCollection<TalentButton> buttons, IReadOnlyCollection<Identifier> selectedTalents)
-        //     {
-        //         HashSet<TalentStages> talentStages = new HashSet<TalentStages>();
-        //         foreach (TalentButton button in buttons)
-        //         {
-        //             talentStages.Add(GetTalentState(character, button.Identifier, selectedTalents));
-        //         }
-
-        //         TalentStages collectiveStage = talentStages.All(static stage => stage is Locked)
-        //             ? Locked
-        //             : Available;
-
-        //         foreach (TalentStages stage in talentStages)
-        //         {
-        //             if (stage is Highlighted)
-        //             {
-        //                 collectiveStage = Highlighted;
-        //                 break;
-        //             }
-
-        //             if (stage is Unlocked)
-        //             {
-        //                 collectiveStage = Unlocked;
-        //                 break;
-        //             }
-        //         }
-
-        //         return collectiveStage;
-        //     }
-        //     return false;
-        // }
-
     }
 }

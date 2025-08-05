@@ -1,23 +1,31 @@
-
-
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Xml.Linq;
 using Barotrauma;
-using Barotrauma.Networking;
+using Barotrauma.Extensions;
 using HarmonyLib;
+using Microsoft.Xna.Framework;
+using static Barotrauma.TalentTree;
+using static Barotrauma.TalentTree.TalentStages;
+using static CrossClass.CrossClassHelpers;
+
 
 namespace CrossClass;
 
-// [HarmonyPatch]
-// public class CrewManager_Patches
-// {
-	// [HarmonyPostfix]
+[HarmonyPatch]
+public class CrewManager_Shared_Patches
+{
+
 	// [HarmonyPatch(typeof(CrewManager), "AddCharacter")]
-	// static void InitializeCharacter(Character character, WayPoint mainSubWaypoint, WayPoint spawnWaypoint)
+	// static void AddCharacter_Postfix(Character character)
 	// {
-// #if CLIENT
-		// LuaCsLogger.Log("Called AddCharacter");
-// #endif
-// #if CLIENT
-		// CrossClassSync.Instance.RequestCharacterConfig();
+// #if SERVER
+// 		LuaCsLogger.LogMessage("Adding character, writing to all clients");
+// 		CrossClassSync.Instance.ServerWrite_Character();
 // #endif
 	// }
-// }
+}
