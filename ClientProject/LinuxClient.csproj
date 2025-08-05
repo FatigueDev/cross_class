@@ -40,6 +40,9 @@
       <Reference Include="XNATypes">
         <HintPath>..\Refs\XNATypes.dll</HintPath>
       </Reference>
+      <!-- <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all">
+        <PrivateAssets>compile</PrivateAssets>
+      </PackageReference> -->
     </ItemGroup>
 
     <Import Project="..\SharedProject\SharedProject.projitems" Label="Shared" />

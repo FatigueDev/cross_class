@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Barotrauma;
@@ -10,258 +11,37 @@ using Microsoft.Xna.Framework;
 using MonoGame.Utilities;
 using static Barotrauma.TalentTree;
 using static Barotrauma.TalentTree.TalentStages;
+using static CrossClass.CrossClassHelpers;
+using static Barotrauma.TalentTreeStyle;
 
 namespace CrossClass
 {
-    [HarmonyPatch]
-    public class TalentMenu_Patches
+    public class TalentSelectionBar
     {
-        // static GUIFrame? parentCached = null;
-        static GUIListBox? mainList = null;
-        static GUIFrame? content = null;
-        static GUILayoutGroup? contentLayout = null;
-        static GUILayoutGroup? subTreeLayoutGroup = null;
-        static GUIListBox? specializationList = null;
-        static GUILayoutGroup? crossClassLayout = null;
-        static GUIListBox? crossClassButtonList = null;
-        static GUILayoutGroup? footerMainLayout = null;
-        static GUIButton? crossClassButton = null;
-        static GUIFrame? background;
-        static GUIFrame? horizontalLine;
-        static int padding;
-        static GUIFrame? frame;
-        public static TalentTree? selectedTalentTree = null;
-        public static TalentTree? primaryTalentTree = null;
-        // public static List<TalentTree> crossClassTalentTrees = [];
-        // static bool shouldClearCrossClassValues = true;
-
-        private static readonly Color unselectedColor = new Color(240, 255, 255, 225),
-                                    unselectableColor = new Color(100, 100, 100, 225),
-                                    pressedColor = new Color(60, 60, 60, 225),
-                                    lockedColor = new Color(48, 48, 48, 255),
-                                    unlockedColor = new Color(24, 37, 31, 255),
-                                    availableColor = new Color(50, 47, 33, 255);
-
-        static Identifier crossClassTotalPointsString = "cross_class_available_points.";
-        static Identifier crossClassSpentPointsString = "cross_class_spent_points.";
-        static Identifier crossClassSelectedJob = "cross_class_selected_job";
-
-        static int GetTotalCrossClassPoints(CharacterInfo characterInfo) =>
-            (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassTotalPointsString}{characterInfo.ID}"));
-
-        static int GetSpentCrossClassPoints(CharacterInfo characterInfo) =>
-            (int)characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"{crossClassSpentPointsString}{characterInfo.ID}"));
-
-        static int GetAvailableCrossClassPoints(CharacterInfo characterInfo) =>
-            GetTotalCrossClassPoints(characterInfo) - GetSpentCrossClassPoints(characterInfo);
-
-        static void IncrementTotalCrossClassPoints(CharacterInfo characterInfo)
+        public void Create(GUILayoutGroup parent, CharacterInfo characterInfo, GUIFrame talentMenuParentFrame, TalentMenu talentMenu)
         {
-            int currentPoints = GetTotalCrossClassPoints(characterInfo);
-            SetTotalCrossClassPoints(characterInfo, currentPoints + 1);
-        }
-
-        static void IncrementSpentCrossClassPoints(CharacterInfo characterInfo)
-        {
-            int currentSpent = GetSpentCrossClassPoints(characterInfo);
-            SetSpentCrossClassPoints(characterInfo, currentSpent + 1);
-        }
-
-        static void SetTotalCrossClassPoints(CharacterInfo characterInfo, int value) =>
-            characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassTotalPointsString}{characterInfo.ID}"), false, setValue: true);
-
-        static void SetSpentCrossClassPoints(CharacterInfo characterInfo, int value) =>
-            characterInfo.ChangeSavedStatValue(StatTypes.None, (float)value, new Identifier($"{crossClassSpentPointsString}{characterInfo.ID}"), false, setValue: true);
-
-        static bool CanCrossClass(CharacterInfo characterInfo)
-        {
-            var availablePoints = GetAvailableCrossClassPoints(characterInfo);
-            var totalPoints = GetTotalCrossClassPoints(characterInfo);
-            var spentPoints = GetSpentCrossClassPoints(characterInfo);
-            // LuaCsLogger.LogError($"\nAvailable points: {availablePoints}\nTotal points: {totalPoints}\nSpent points: {spentPoints}\n");
-            return GetAvailableCrossClassPoints(characterInfo) > 0;
-        }
-
-        static void SelectTalentTree(CharacterInfo characterInfo, Identifier selectedTalentTreeJobPrefabIdentifier)
-        {
-            // shouldClearCrossClassValues = false;
-            selectedTalentTree = GetTalentTreeForJobIdentifier(selectedTalentTreeJobPrefabIdentifier, characterInfo.Job.Prefab.Identifier);
-            for(int i = 0; i < JobTalentTrees.Count(); i++)
-            {
-                if(JobTalentTrees.ElementAt(i) == selectedTalentTree)
-                {
-                    characterInfo.ChangeSavedStatValue(StatTypes.None, i, "cross_class_current_selection", true, setValue: true);
-                }
-            }
-        }
-
-        public static TalentTree GetSelectedTalentTree(CharacterInfo characterInfo)
-        {
-            return JobTalentTrees.ElementAt((int)characterInfo.GetSavedStatValue(StatTypes.None, "cross_class_current_selection"));
-        }
-
-        static void LoadSavedCrossClassTalentTrees(CharacterInfo characterInfo)
-        {
-            // crossClassTalentTrees.Clear();
-            foreach(TalentTree t in JobTalentTrees)
-            {
-                if(HasCrossClassTalentTree(characterInfo, t))
-                {
-                    UnlockCrossClassTalentTree(characterInfo, t);
-                }
-            }
-            RefreshCrossClassTalentPoints(characterInfo);
-        }
-
-        static void RefreshCrossClassTalentPoints(CharacterInfo characterInfo)
-        {
-            SetTotalCrossClassPoints(characterInfo, 0);
-            SetSpentCrossClassPoints(characterInfo, 0);
-            var totalTalentPoints = characterInfo.GetTotalTalentPoints();
-
-            // if(totalTalentPoints == 3)
-            // {
-            //     IncrementTotalCrossClassPoints(characterInfo);
-            // }
-            // else if(totalTalentPoints > 3)
-            // {
-            //     int counter = 0;
-            for(int i = 0; i < totalTalentPoints; i++)
-            {
-                if(i < 3) continue;
-                if(i >= 3 && i % 3 == 0)
-                {
-                    IncrementTotalCrossClassPoints(characterInfo);
-                }
-            }
-            // }
-
-            JobTalentTrees.ForEach((tt) => {
-                if(HasCrossClassTalentTree(characterInfo, tt))
-                {
-                    IncrementSpentCrossClassPoints(characterInfo);
-                }
-            });
-
-            // for(int i = 0; i < crossClassTalentTrees.Count(); i++)
-            // {
-            // }
-        }
-
-        // static void UpdateCrossClassTotalTalentPoints(CharacterInfo characterInfo)
-        // {
-           
-        // }
-
-        public static bool HasCrossClassTalentTree(CharacterInfo characterInfo, TalentTree talentTree)
-        {
-            // LuaCsLogger.LogMessage($"{characterInfo.DisplayName} has the cross_class tree of {talentTree.Identifier}");
-            return characterInfo.GetSavedStatValue(StatTypes.None, new Identifier($"cross_class.{characterInfo.ID}.{talentTree.Identifier}")) != 0f;
-        }
-
-        static void UnlockCrossClassTalentTree(CharacterInfo characterInfo, TalentTree talentTree)
-        {
-            if(!HasCrossClassTalentTree(characterInfo, talentTree))
-            {
-                // LuaCsLogger.LogMessage($"{characterInfo.DisplayName} is unlocking the cross_class of {talentTree.Identifier}");
-                // crossClassTalentTrees.Add(talentTree);
-                characterInfo.ChangeSavedStatValue(StatTypes.None, 1f, new Identifier($"cross_class.{characterInfo.ID}.{talentTree.Identifier}"), false, setValue: true);
-                RefreshCrossClassTalentPoints(characterInfo);
-            }
-        }
-
-        
-
-        // static TalentTree GetTalentTreeForJobPrefab(JobPrefab jobPrefab)
-        // {
-        //     TalentTree tree = TalentTree.JobTalentTrees.Where(t => t.Identifier)
-        //     return JobTalentTrees.Where((tt) => {
-        //         return tt.Identifier == jobPrefab.Identifier;
-        //     }).Select((jp)=> {
-        //         return jp;
-        //     }).Single();
-        // }
-
-        static TalentTree GetTalentTreeForJobIdentifier(Identifier jobPrefabIdentifier, Identifier defaultJobPrefabIdentifier)
-        {
-            if (TalentTree.JobTalentTrees.TryGet(jobPrefabIdentifier, out TalentTree? selectedTree))
-            {
-                return selectedTree;
-            }
-            else
-            {
-                return GetDefaultTalentTree(defaultJobPrefabIdentifier);
-            }
-        }
-
-        static TalentTree GetDefaultTalentTree(Identifier jobPrefabIdentifier)
-        {
-            // var jobPrefab = characterInfo.Job.Prefab;
-            if (TalentTree.JobTalentTrees.TryGet(jobPrefabIdentifier, out TalentTree? defaultTree))
-            {
-                return defaultTree;
-            }
-            else
-            {
-                throw new NullReferenceException($"TalentTree.JobTalentTrees does not contain a TalentTree for {jobPrefabIdentifier}");
-            }
-        }
-
-        static void ClearGUI(GUIFrame parent, CharacterInfo? characterInfo, TalentMenu talentMenu)
-        {
-            talentMenu.characterInfo = characterInfo;
-            talentMenu.character = characterInfo?.Character;
-
-            parent.ClearChildren();
-            talentMenu.talentButtons.Clear();
-            talentMenu.talentShowCaseButtons.Clear();
-            talentMenu.talentCornerIcons.Clear();
-            talentMenu.showCaseTalentFrames.Clear();
-            primaryTalentTree = null;
-            // crossClassTalentTrees.Clear();
-
-            // if(shouldClearCrossClassValues == true)
-            // {
-            //     primaryTalentTree = null;
-            //     selectedTalentTree = null;
-            //     crossClassTalentTrees = Enumerable.Empty<TalentTree>();
-            // }
-        }
-
-        static void ResetGUI(GUIFrame parent)
-        {
-            background = new GUIFrame(new RectTransform(Vector2.One, parent.RectTransform, Anchor.TopCenter), style: "GUIFrameListBox");
-            padding = GUI.IntScale(15);
-            frame = new GUIFrame(new RectTransform(new Point(background.Rect.Width - padding, background.Rect.Height - padding), parent.RectTransform, Anchor.Center), style: null);
-
-            content = new GUIFrame(new RectTransform(new Vector2(0.98f), frame.RectTransform, Anchor.Center), style: null);
-            contentLayout = new GUILayoutGroup(new RectTransform(Vector2.One, content.RectTransform, anchor: Anchor.Center), childAnchor: Anchor.TopCenter)
-            {
-                AbsoluteSpacing = GUI.IntScale(10),
-                Stretch = true
-            };
-        }
-
-        static void CreateTalentSelectionBar(GUILayoutGroup parent, CharacterInfo characterInfo, GUIFrame talentMenuParentFrame, TalentMenu talentMenu)
-        {
-            // RefreshCrossClassTalentPoints(characterInfo);
-            var availableCrossClassPoints = GetAvailableCrossClassPoints(characterInfo);
+            var character = characterInfo.Character;
+            var availableCrossClassPoints = GetAvailableCrossClassPoints(character);
             var crossClassButtonSuffix = availableCrossClassPoints > 0 ? $" ({availableCrossClassPoints})" : "";
+            var primaryTalentTree = GetPrimaryTalentTree(character);
+            var selectedTalentTree = GetSelectedTalentTree(character);
+            var canCrossClass = CanCrossClass(character) && !HasCrossClassTalentTree(selectedTalentTree, character) && selectedTalentTree != primaryTalentTree;
             // LuaCsLogger.LogError($"Stepped in again; available points is: {availableCrossClassPoints}");
 
-            crossClassLayout = new GUILayoutGroup(new RectTransform(new Vector2(1f, 0.1f), parent.RectTransform), true, Anchor.CenterLeft);
-            crossClassButton = new GUIButton(new RectTransform(new Vector2(0.2f, 0.9f), crossClassLayout.rectTransform))
+            var crossClassLayout = new GUILayoutGroup(new RectTransform(new Vector2(1f, 0.1f), parent.RectTransform), true, Anchor.CenterLeft);
+            var crossClassButton = new GUIButton(new RectTransform(new Vector2(0.2f, 0.9f), crossClassLayout.rectTransform))
             {
                 OnButtonDown = () =>
                 {
                     // LuaCsLogger.LogMessage("Pressed Cross Class");
                     // f.Visible = !f.Visible;
-                    if(selectedTalentTree != primaryTalentTree && CanCrossClass(characterInfo))
+                    if (GetSelectedTalentTree(character) != GetPrimaryTalentTree(character) && CanCrossClass(character))
                     {
                         // LuaCsLogger.LogMessage($"Adding {selectedTalentTree!.Identifier} as a cross class tree.");
-                        UnlockCrossClassTalentTree(characterInfo, selectedTalentTree);
-                        RefreshCrossClassTalentPoints(characterInfo);
-                        
+                        UnlockCrossClassTalentTree(GetSelectedTalentTree(character), character);
+                        // CrossClassSync.Instance.UpdateConfig();
+                        // CrossClassUtils.RefreshCrossClassTalentPoints(characterInfo);
+
                         // shouldClearCrossClassValues = false;
 
                         // ClearGUI(parentCached!, characterInfo, talentMenu);
@@ -272,8 +52,8 @@ namespace CrossClass
                     return true;
                 },
                 Text = $"Cross Class{crossClassButtonSuffix}",
-                Color = CanCrossClass(characterInfo) ? Color.Goldenrod : Color.Gray,
-                Enabled = CanCrossClass(characterInfo),
+                Color = canCrossClass ? Color.Goldenrod : Color.Gray,
+                Enabled = canCrossClass,
                 TextColor = Color.White,
                 HoverColor = Color.LightGoldenrodYellow,
                 SelectedColor = Color.Goldenrod,
@@ -282,13 +62,35 @@ namespace CrossClass
                 ToolTip = "Upon clicking this button when you are able to cross class, the currently selected tree will be added to your cross class list."
             };
 
-            crossClassButtonList = new GUIListBox(new RectTransform(new Vector2(0.8f, 0.9f), crossClassLayout.RectTransform), true);
+            var crossClassButtonList = new GUIListBox(new RectTransform(new Vector2(0.8f, 0.9f), crossClassLayout.RectTransform), true);
+
+            bool selectedIsPrimary = selectedTalentTree == primaryTalentTree;
+            bool selectedIsUnlocked = HasCrossClassTalentTree(selectedTalentTree, character) || selectedIsPrimary;
+
+            var selectedTalentLocalizedName = JobPrefab.Prefabs[selectedTalentTree.Identifier].Name;
+            string selectedClassLabelText = string.Empty;
+
+            if (selectedIsPrimary)
+            {
+                selectedClassLabelText = $"Selected: {TextManager.Capitalize(selectedTalentLocalizedName ?? selectedTalentTree.Identifier.ToString())} (Unlocked - Core Talent Tree)";
+            }
+            else if (selectedIsUnlocked)
+            {
+                selectedClassLabelText = $"Selected: {TextManager.Capitalize(selectedTalentLocalizedName ?? selectedTalentTree.Identifier.ToString())} (Unlocked - Cross Class)";
+            }
+            else
+            {
+                selectedClassLabelText = $"Selected: {TextManager.Capitalize(selectedTalentLocalizedName ?? selectedTalentTree.Identifier.ToString())} (Locked)";
+            }
+
+            // LuaCsLogger.LogMessage($"Menu text should be:{{\n{selectedClassLabelText}\n}}");
+            var selectedClassLabel = new GUITextBlock(new RectTransform(new Vector2(1f, 0.025f), parent.RectTransform), selectedClassLabelText, font: GUIStyle.SubHeadingFont, textAlignment: Alignment.CenterLeft, color: Color.White);
 
             // IEnumerable<JobPrefab> jobPrefabList = Enumerable.Empty<JobPrefab>();
             // jobPrefabList = JobPrefab.Prefabs.Where((job) => job.Identifier).Prepend(primaryTalentTree!);
 
             // JobTalentTrees.ForEach((t)=>{
-                
+
             // });
 
             IEnumerable<JobPrefab> jobPrefabs = JobPrefab.Prefabs.Where(
@@ -316,44 +118,42 @@ namespace CrossClass
                 // {
                 // var isCrossClassSkill = characterInfo.GetSavedStatValue(StatTypes.None, $"cross_class.{characterInfo.Job.Prefab.Identifier}");
 
-                bool isPrimary = characterInfo.Job.Prefab.Identifier == jobPrefab.Identifier;
-                bool isSelectedTree = selectedTalentTree!.Identifier == jobPrefab.Identifier;
-                bool hasCrossClassTree =
-                    HasCrossClassTalentTree(
-                        characterInfo,
-                        GetTalentTreeForJobIdentifier(jobPrefab.Identifier, characterInfo.Job.Prefab.Identifier)
-                    );
+                var primaryTalentTree = GetPrimaryTalentTree(character);
+                var talentTreeForJob = GetTalentTreeForJobIdentifier(jobPrefab.Identifier);
+                bool isPrimary = primaryTalentTree == talentTreeForJob;
+                bool isSelectedTree = GetSelectedTalentTree(character) == talentTreeForJob;
+                bool hasCrossClassTree = HasCrossClassTalentTree(talentTreeForJob, character);
 
                 // LuaCsLogger.LogError($"State of hasCrossClassTree: #{hasCrossClassTree}");
 
-                Color selectedColor = Color.LightGoldenrodYellow;
-                Color selectedLockedColor = Color.LightGray;
+                Color selectedColor = Color.LightGreen;
+                Color selectedLockedColor = Color.LightGreen;
                 Color unlockedColor = Color.White;
-                Color lockedColor = Color.DimGray;
+                Color lockedColor = Color.Gray;
 
                 Color buttonColor = Color.Magenta;
 
-                if(isPrimary && isSelectedTree)
+                if (isPrimary && !hasCrossClassTree && isSelectedTree)
                 {
                     buttonColor = selectedColor;
                 }
-                else if(isPrimary && !isSelectedTree)
+                else if (isPrimary && !hasCrossClassTree && !isSelectedTree)
                 {
                     buttonColor = unlockedColor;
                 }
-                else if(!isPrimary && hasCrossClassTree && isSelectedTree)
+                else if (!isPrimary && hasCrossClassTree && isSelectedTree)
                 {
                     buttonColor = selectedColor;
                 }
-                else if(!isPrimary && hasCrossClassTree && !isSelectedTree)
+                else if (!isPrimary && hasCrossClassTree && !isSelectedTree)
                 {
                     buttonColor = unlockedColor;
                 }
-                else if(!isPrimary && !hasCrossClassTree && isSelectedTree)
+                else if (!isPrimary && !hasCrossClassTree && isSelectedTree)
                 {
                     buttonColor = selectedLockedColor;
                 }
-                else if(!isPrimary && !hasCrossClassTree && !isSelectedTree)
+                else if (!isPrimary && !hasCrossClassTree && !isSelectedTree)
                 {
                     buttonColor = lockedColor;
                 }
@@ -366,7 +166,7 @@ namespace CrossClass
                     // HoverColor = Color.WhiteSmoke,
                     ToolTip = $"{jobPrefab.Name}"
                 };
-                
+
                 // }
                 //RichString.Rich($"‖color:{Color.White.ToStringHex()}‖{jobPrefab.Name.cachedValue}‖color:end‖");
 
@@ -374,7 +174,7 @@ namespace CrossClass
                     new RectTransform(new Vector2(1f, 1f), iconButton.RectTransform, Anchor.CenterLeft), jobPrefab.Icon, true)
                 {
                     // Enabled = false,
-                    Color = hasCrossClassTree ? jobPrefab.UIColor : buttonColor,
+                    Color = (hasCrossClassTree || isPrimary) ? jobPrefab.UIColor : buttonColor,
                     // DisabledColor = Color.Gray,
                     // HoverColor = Color.WhiteSmoke,
                     // ToolTip = TextManager.Get(jobPrefab.Identifier)
@@ -383,11 +183,11 @@ namespace CrossClass
 
                 iconButton.OnButtonDown += (GUIButton.OnButtonDownHandler)(() =>
                 {
-                    SelectTalentTree(characterInfo, jobPrefab.Identifier);
+                    SetSelectedTalentTree(jobPrefab.Identifier, character);
                     // CreateGUIForSelectedTalentTree(talentMenuParentFrame, characterInfo, talentMenu);
 
                     // LuaCsLogger.LogMessage($"Selected: {jobPrefab.Identifier}");
-                    
+
                     // if (TalentTree.JobTalentTrees.TryGet(jobPrefab.Identifier, out TalentTree? selectedJob))
                     // {
                     // talentMenu.CreateTalentMenu(contentLayout!, characterInfo, selectedJob!);
@@ -395,7 +195,7 @@ namespace CrossClass
                     // talentMenu.UpdateTalentInfo();
                     // }
 
-                    CreateGUI(talentMenuParentFrame, characterInfo, talentMenu);
+                    talentMenu.CreateGUI(talentMenuParentFrame, characterInfo);
                     return true;
                 });
 
@@ -406,6 +206,45 @@ namespace CrossClass
 
             // crossClassButtonList.RectTransform.MinSize = new Point(crossClassButtonList.Rect.Width + (int)(crossClassButtonList.ScrollBar.Rect.Width * 0.9f), crossClassButtonList.Content.Rect.Height);
         }
+    }
+
+    [HarmonyPatch]
+    public class TalentMenu_Patches
+    {
+        // static GUIFrame? parentCached = null;
+        static GUIListBox? mainList = null;
+        static GUIFrame? content = null;
+        static GUILayoutGroup? contentLayout = null;
+        static GUILayoutGroup? subTreeLayoutGroup = null;
+        static GUIListBox? specializationList = null;
+        static GUILayoutGroup? crossClassLayout = null;
+        static GUIListBox? crossClassButtonList = null;
+        static GUILayoutGroup? footerMainLayout = null;
+        static GUIButton? crossClassButton = null;
+        static GUITextBlock? selectedClassLabel = null;
+        static GUIFrame? background;
+        static GUIFrame? horizontalLine;
+        static int padding;
+        static GUIFrame? frame;
+        static TalentSelectionBar talentSelectionBar = new TalentSelectionBar();
+        
+         private static readonly Color unselectedColor = new Color(240, 255, 255, 225),
+                                      unselectableColor = new Color(100, 100, 100, 225),
+                                      pressedColor = new Color(60, 60, 60, 225),
+                                      lockedColor = new Color(48, 48, 48, 255),
+                                      unlockedColor = new Color(24, 37, 31, 255),
+                                      availableColor = new Color(50, 47, 33, 255);
+
+        private static readonly ImmutableDictionary<TalentStages, TalentTreeStyle> talentStageStyles =
+            new Dictionary<TalentStages, TalentTreeStyle>
+            {
+                [Invalid] = new TalentTreeStyle("TalentTreeLocked", lockedColor),
+                [Locked] = new TalentTreeStyle("TalentTreeLocked", lockedColor),
+                [Unlocked] = new TalentTreeStyle("TalentTreePurchased", unlockedColor),
+                [Available] = new TalentTreeStyle("TalentTreeUnlocked", availableColor),
+                [Highlighted] = new TalentTreeStyle("TalentTreeAvailable", availableColor)
+            }.ToImmutableDictionary();
+
 
         // static void CreateGUIForSelectedTalentTree(GUIFrame parent, CharacterInfo? characterInfo, TalentMenu __instance)
         // {
@@ -437,62 +276,88 @@ namespace CrossClass
         //     }
         // }
 
+        static GUIFrame? talentMenuParent;
+
         [HarmonyPrefix]
         [HarmonyPatch("Barotrauma.TalentMenu", "CreateGUI")]
         static bool CreateGUI(GUIFrame parent, CharacterInfo? characterInfo, TalentMenu __instance)
         {
-            // LuaCsLogger.Log("Talent Menu create GUI fully overridden.\nSetting character info stat for debug");
-
-            // parentCached = parent;
-
-            ClearGUI(parent, characterInfo, __instance);
-            ResetGUI(parent);
-
-            if (characterInfo is null) { return false; }
-
-            RefreshCrossClassTalentPoints(characterInfo);
+            // if(CrossClassSync.Instance.Initialized == false)
+            //     return true;
             
-            // if(!TalentMenu.IsOwnCharacter(characterInfo))
-            // {
-            //     shouldClearCrossClassValues = true;
-            // }
-
-            primaryTalentTree = GetDefaultTalentTree(characterInfo.Job.Prefab.Identifier);
-
-            if(selectedTalentTree == null)
-            {
-                selectedTalentTree = primaryTalentTree;
-            }
-            else
-            {
-                primaryTalentTree = GetDefaultTalentTree(characterInfo.Job.Prefab.Identifier);
-                selectedTalentTree ??= primaryTalentTree;
-            }
-            LoadSavedCrossClassTalentTrees(characterInfo);
-
+            talentMenuParent ??= parent;
+            // if(!CrossClassSync.Instance.Initialized) return true;
+            // CrossClassSync.Instance.UpdateConfig();
             
-            // characterInfo.ChangeSavedStatValue(StatTypes.None, 1.0f, $"cross_class.captain", false, 1.0f, true);
+            __instance.characterInfo = characterInfo;
+            __instance.character = characterInfo?.Character;
 
-            // LuaCsLogger.LogMessage($"Saved stat value = {characterInfo.GetSavedStatValue(StatTypes.None, "cross_class.captain")}");
+            parent.ClearChildren();
+            __instance.talentButtons.Clear();
+            __instance.talentShowCaseButtons.Clear();
+            __instance.talentCornerIcons.Clear();
+            __instance.showCaseTalentFrames.Clear();
 
-            __instance.CreateStatPanel(contentLayout!, characterInfo);
-            horizontalLine = new GUIFrame(new RectTransform(new Vector2(1f, 1f), contentLayout!.RectTransform), style: "HorizontalLine");
+            background = new GUIFrame(new RectTransform(Vector2.One, parent.RectTransform, Anchor.TopCenter), style: "GUIFrameListBox");
+            padding = GUI.IntScale(15);
+            frame = new GUIFrame(new RectTransform(new Point(background.Rect.Width - padding, background.Rect.Height - padding), parent.RectTransform, Anchor.Center), style: null);
 
-            // if (TalentTree.JobTalentTrees.TryGet(characterInfo.Job.Prefab.Identifier, out TalentTree? talentTree))
-            // {
-            //     // selectedTalentTree ??= GetDefaultTalentTree(characterInfo.Job.Prefab.Identifier);
-
-            CreateTalentSelectionBar(contentLayout, characterInfo, parent, __instance);
-            __instance.CreateTalentMenu(contentLayout, characterInfo, selectedTalentTree!);
-
-            // }
-
-            __instance.CreateFooter(contentLayout, characterInfo);
-            __instance.UpdateTalentInfo();
-
-            if (GameMain.NetworkMember != null && TalentMenu.IsOwnCharacter(characterInfo))
+            content = new GUIFrame(new RectTransform(new Vector2(0.98f), frame.RectTransform, Anchor.Center), style: null);
+            contentLayout = new GUILayoutGroup(new RectTransform(Vector2.One, content.RectTransform, anchor: Anchor.Center), childAnchor: Anchor.TopCenter)
             {
-                __instance.CreateMultiplayerCharacterSettings(frame!, content!);
+                AbsoluteSpacing = GUI.IntScale(10),
+                Stretch = true
+            };
+
+            if (characterInfo != null && characterInfo?.Character != null)
+            {
+                var character = characterInfo.Character;
+                // foreach(var talent in characterInfo.UnlockedTalents)
+                // {
+                //     LuaCsLogger.Log($"Character {characterInfo.Name} has `{talent}");
+                // }
+
+                // if(TalentMenu.IsOwnCharacter(characterInfo))
+                // {
+                UpdateCharacterTotalTalentPoints(character);
+                // if(GameMain.IsSingleplayer)
+                // {
+                //     CrossClassSync.Instance.SaveCharacter(characterInfo);
+                // }
+
+                // if(string.IsNullOrEmpty(CrossClassSync.Instance.CharacterConfig.CharacterData.PrimaryClass))
+                // {
+                //     SetPrimaryTalentTree(characterInfo.Job.Prefab.Identifier.ToString());
+                // }
+                
+                // if(string.IsNullOrEmpty(CrossClassSync.Instance.CharacterConfig.CharacterData.SelectedClass))
+                // {
+                //     SetSelectedTalentTree(characterInfo.Job.Prefab.Identifier.ToString());
+                // }
+                __instance.CreateStatPanel(contentLayout!, characterInfo);
+                horizontalLine = new GUIFrame(new RectTransform(new Vector2(1f, 1f), contentLayout!.RectTransform), style: "HorizontalLine");
+                talentSelectionBar = new TalentSelectionBar();
+
+                talentSelectionBar.Create(contentLayout, characterInfo, parent, __instance);
+                __instance.CreateTalentMenu(contentLayout, characterInfo, GetSelectedTalentTree(character));
+                // }
+                // else
+                // {
+                //     __instance.CreateStatPanel(contentLayout!, characterInfo);
+                //     if(GetTalentTreeForJobIdentifier(characterInfo.Job.Prefab.Identifier) is TalentTree jobTree)
+                //     {
+                //         horizontalLine = new GUIFrame(new RectTransform(new Vector2(1f, 1f), contentLayout!.RectTransform), style: "HorizontalLine");
+                //         __instance.CreateTalentMenu(contentLayout, characterInfo, jobTree);
+                //     }                    
+                // }
+
+                __instance.CreateFooter(contentLayout, characterInfo);
+                __instance.UpdateTalentInfo();
+
+                if (GameMain.NetworkMember != null && TalentMenu.IsOwnCharacter(characterInfo))
+                {
+                    __instance.CreateMultiplayerCharacterSettings(frame!, content!);
+                }
             }
 
             return false;
@@ -639,14 +504,21 @@ namespace CrossClass
             __instance.talentApplyButton = new GUIButton(new RectTransform(new Vector2(0.19f, 1f), footerMainLayout.RectTransform), TextManager.Get("applysettingsbutton"), Alignment.Center, "GUIButtonFreeScale")
             {
                 OnClicked = __instance.ApplyTalentSelection
-			};
+            };
             GUITextBlock.AutoScaleAndNormalize(__instance.talentResetButton.TextBlock, __instance.talentApplyButton.TextBlock);
             return false;
         }
 
+        // [HarmonyPostfix]
+        // [HarmonyPatch("Barotrauma.TalentMenu", "ApplyTalents")]
+        // static void ApplyTalents(Character controlledCharacter, ref TalentMenu __instance)
+        // {
+            // __instance.CreateGUI(talentMenuParent, __instance.characterInfo);
+        // }
+
         [HarmonyPrefix]
         [HarmonyPatch("Barotrauma.TalentMenu", "CreateTalentOption")]
-        static bool CreateTalentOption(GUIComponent parent, TalentSubTree subTree, int index, TalentOption talentOption, CharacterInfo info, int specializationCount, TalentMenu __instance, ref ImmutableDictionary<TalentStages, TalentTreeStyle> ___talentStageStyles)
+        static bool CreateTalentOption(GUIComponent parent, TalentSubTree subTree, int index, TalentOption talentOption, CharacterInfo info, int specializationCount, TalentMenu __instance, ref ImmutableDictionary<TalentStages, TalentTreeStyle> ___talentStageStyles, ref Color ___pressedColor, ref Color ___unselectableColor)
         {
             int elementPadding = GUI.IntScale(8);
             int height = GUI.IntScale((GameMain.GameSession?.Campaign == null ? 65 : 60) * (specializationCount > 3 ? 0.97f : 1.0f));
@@ -722,7 +594,7 @@ namespace CrossClass
                 {
                     ToolTip = TalentMenu.GetTalentTooltip(talent, __instance.characterInfo),
                     UserData = talent.Identifier,
-                    PressedColor = pressedColor,
+                    PressedColor = ___pressedColor,
                     Enabled = info.Character != null,
                     OnClicked = (button, userData) =>
                     {
@@ -795,8 +667,8 @@ namespace CrossClass
                     {
                         OutlineColor = GUIStyle.Red,
                         TextColor = GUIStyle.Red,
-                        PressedColor = unselectableColor,
-                        DisabledColor = unselectableColor,
+                        PressedColor = ___unselectableColor,
+                        DisabledColor = ___unselectableColor,
                         CanBeFocused = false,
                     };
                 }
@@ -805,8 +677,8 @@ namespace CrossClass
                     iconImage = new GUIImage(new RectTransform(Vector2.One, talentButton.RectTransform, anchor: Anchor.Center), sprite: talent.Icon, scaleToFit: true)
                     {
                         Color = talent.ColorOverride.TryUnwrap(out Color color) ? color : Color.White,
-                        PressedColor = unselectableColor,
-                        DisabledColor = unselectableColor * 0.5f,
+                        PressedColor = ___unselectableColor,
+                        DisabledColor = ___unselectableColor * 0.5f,
                         CanBeFocused = false,
                     };
                 }

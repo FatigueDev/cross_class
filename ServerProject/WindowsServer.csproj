@@ -55,19 +55,26 @@
     <Reference Include="XNATypes">
       <HintPath>..\Refs\XNATypes.dll</HintPath>
     </Reference>
+    <!-- <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" /> -->
   </ItemGroup>
 
   <PropertyGroup>
     <RootNamespace>$(SolutionName.Replace(" ", "_"))</RootNamespace>
     <PlatformTarget>x64</PlatformTarget>
     <GenerateDocumentationFile>False</GenerateDocumentationFile>
+    <!-- <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies> -->
   </PropertyGroup>
 
   <Target Name="CopyFiles" AfterTargets="Build">
     <ItemGroup>
+      <!-- <Content Include="$(ProjectDir)..\Refs\Newtonsoft.Json.dll" >
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content> -->
       <Assemblies Include="$(TargetDir)$(TargetName).dll" />
       <DepsFiles Include="$(TargetDir)$(TargetName).deps.json" />
     </ItemGroup>
+    
+    <!-- <Copy SourceFiles="..\Refs\Newtonsoft.Json.dll" DestinationFiles="$(ModDeployDir)bin\Server\Windows\Newtonsoft.Json.dll" /> -->
     <Copy SourceFiles="@(Assemblies)" DestinationFiles="$(ModDeployDir)bin\Server\Windows\$(TargetName).dll" />
     <Copy SourceFiles="@(DepsFiles)" DestinationFiles="$(ModDeployDir)bin\Server\Windows\$(TargetName).deps.json" />
   </Target>

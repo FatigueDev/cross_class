@@ -58,6 +58,7 @@
     <Reference Include="XNATypes">
       <HintPath>..\Refs\XNATypes.dll</HintPath>
     </Reference>
+    <!-- <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" /> -->
   </ItemGroup>
 
   <PropertyGroup>
@@ -71,6 +72,7 @@
       <Assemblies Include="$(TargetDir)$(TargetName).dll" />
       <DepsFiles Include="$(TargetDir)$(TargetName).deps.json" />
     </ItemGroup>
+    <!-- <Copy SourceFiles="..\Refs\Newtonsoft.Json.dll" DestinationFiles="$(ModDeployDir)bin\Client\Windows\Newtonsoft.Json.dll" /> -->
     <Copy SourceFiles="@(Assemblies)" DestinationFiles="$(ModDeployDir)bin\Client\Windows\$(TargetName).dll" />
     <Copy SourceFiles="@(DepsFiles)" DestinationFiles="$(ModDeployDir)bin\Client\Windows\$(TargetName).deps.json" />
   </Target>

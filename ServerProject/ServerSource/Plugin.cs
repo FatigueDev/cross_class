@@ -7,8 +7,10 @@ using Barotrauma;
 
 namespace CrossClass
 {
+    
     public partial class CrossClass : IAssemblyPlugin
     {
-        // Server-specific code
+        public static bool IsDedicatedServer => GameMain.Server.OwnerConnection == null;
+
     }
 }

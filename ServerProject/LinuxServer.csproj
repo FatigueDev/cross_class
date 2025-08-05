@@ -3,7 +3,7 @@
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
+        <Nullable>enable</Nullable>        
     </PropertyGroup>
 
     <ItemGroup>
@@ -40,6 +40,10 @@
       <Reference Include="XNATypes">
         <HintPath>..\Refs\XNATypes.dll</HintPath>
       </Reference>
+      <!-- <Reference Include="Newtonsoft.Json">
+        <HintPath>..\Libs\Newtonsoft.Json.dll</HintPath>
+        <Private>false</Private>
+      </Reference>      -->
     </ItemGroup>
 
     <Import Project="..\SharedProject\SharedProject.projitems" Label="Shared" />
@@ -64,6 +68,7 @@
             <Assemblies Include="$(TargetDir)$(TargetName).dll" />
             <DepsFiles Include="$(TargetDir)$(TargetName).deps.json" />
         </ItemGroup>
+        <!-- <Copy SourceFiles="..\Refs\Newtonsoft.Json.dll" DestinationFiles="$(ModDeployDir)bin\Server\Linux\Newtonsoft.Json.dll" /> -->
         <Copy SourceFiles="@(Assemblies)" DestinationFiles="$(ModDeployDir)bin\Server\Linux\$(TargetName).dll" />
         <Copy SourceFiles="@(DepsFiles)" DestinationFiles="$(ModDeployDir)bin\Server\Linux\$(TargetName).deps.json" />
     </Target>
